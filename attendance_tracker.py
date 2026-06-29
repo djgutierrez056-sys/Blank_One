@@ -7,7 +7,7 @@ Load your weekly Excel sheets and explore attendance by week / month / quarter /
 import sys
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pandas as pd
 import openpyxl
@@ -23,22 +23,22 @@ from PyQt5.QtWidgets import (
     QGroupBox, QDateEdit, QProgressDialog, QMessageBox, QLineEdit,
 )
 from PyQt5.QtCore import Qt, QDate, QThread, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-BG        = "#1e1e2e"
-BG_CARD   = "#2a2a3e"
-BG_SIDE   = "#16162a"
-BORDER    = "#334155"
-TXT       = "#e2e8f0"
-TXT2      = "#94a3b8"
-BLUE      = "#4f9cf9"
-GREEN     = "#4ade80"
-RED       = "#f87171"
-YELLOW    = "#fbbf24"
-ORANGE    = "#fb923c"
-PURPLE    = "#a78bfa"
-TEAL      = "#2dd4bf"
+BG      = "#1e1e2e"
+BG_CARD = "#2a2a3e"
+BG_SIDE = "#16162a"
+BORDER  = "#334155"
+TXT     = "#e2e8f0"
+TXT2    = "#94a3b8"
+BLUE    = "#4f9cf9"
+GREEN   = "#4ade80"
+RED     = "#f87171"
+YELLOW  = "#fbbf24"
+ORANGE  = "#fb923c"
+PURPLE  = "#a78bfa"
+TEAL    = "#2dd4bf"
 
 STAT_COLORS = {
     "present":    GREEN,
@@ -49,6 +49,16 @@ STAT_COLORS = {
     "leave":      TEAL,
 }
 
+DAY_COLORS = {
+    "present":    "#4ade80",
+    "late":       "#fbbf24",
+    "left early": "#fb923c",
+    "absent":     "#f87171",
+    "sick":       "#a78bfa",
+    "leave":      "#2dd4bf",
+    "off":        "#475569",
+}
+
 # ── Excel parsing ─────────────────────────────────────────────────────────────
 SKIP = {"Master Attendance File", "Holiday Attendance", "Sheet1", "Sheet2"}
 
@@ -57,8 +67,8 @@ _DATE_FMTS = (
     "%m.%d.%Y", "%m.%d.%y",
 )
 
+
 def _sheet_date(sheet_name):
-    """Try to extract a date from a sheet name like 'WE 7-2-23' or '7-14-24'."""
     s = re.sub(r"^WE\s*", "", sheet_name.strip(), flags=re.IGNORECASE).strip()
     s = re.sub(r"\s+", "-", s)
     for fmt in _DATE_FMTS:
@@ -78,6 +88,19 @@ def _safe_int(v):
         return 0
 
 
+def _clean_str(v):
+    """Return a clean string value, or None if v is numeric/blank/junk."""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s or s in ("-", "None", "nan"):
+        return None
+    # Reject purely numeric strings (SS numbers, etc.)
+    if re.fullmatch(r"[\d\s\-\.]+", s):
+        return None
+    return s
+
+
 def load_excel(path, progress_cb=None):
     wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
     sheets = wb.sheetnames
@@ -90,7 +113,6 @@ def load_excel(path, progress_cb=None):
             continue
 
         ws = wb[name]
-
         all_rows = list(ws.iter_rows(values_only=True))
         if len(all_rows) < 2:
             continue
@@ -99,7 +121,6 @@ def load_excel(path, progress_cb=None):
         if not header or header[0] != "Week Ending":
             continue
 
-        # Required columns
         try:
             ci_name = header.index("NAME")
             ci_acct = header.index("Account")
@@ -114,9 +135,8 @@ def load_excel(path, progress_cb=None):
 
         ci_pres = header.index("Present") if "Present" in header else None
         ci_pct  = header.index("Weekly Attendance %") if "Weekly Attendance %" in header else None
-        day_cols = list(range(5, ci_late))  # Mon-Sun columns
+        day_col_indices = list(range(5, ci_late))  # up to 7 day columns
 
-        # Prefer date from sheet name (row[0] is often stale in newer sheets)
         sheet_we = _sheet_date(name)
 
         for row in all_rows[1:]:
@@ -124,8 +144,10 @@ def load_excel(path, progress_cb=None):
             if not emp or not isinstance(emp, str) or not emp.strip():
                 continue
             emp = emp.strip()
+            # Skip rows where name looks like a number or header repeat
+            if re.fullmatch(r"[\d\s]+", emp):
+                continue
 
-            # Date: sheet name → row[0] → skip
             if sheet_we is not None:
                 we = sheet_we
             elif isinstance(row[0], datetime):
@@ -133,28 +155,27 @@ def load_excel(path, progress_cb=None):
             else:
                 continue
 
-            # Discard implausible dates (before 2020)
-            if we.year < 2020:
+            # Only 2024 and later
+            if we.year < 2024:
                 continue
 
-            acct = str(row[ci_acct]).strip() if ci_acct < len(row) and row[ci_acct] else "–"
-            sup  = str(row[ci_sup]).strip()  if ci_sup  < len(row) and row[ci_sup]  else "–"
+            acct = _clean_str(row[ci_acct] if ci_acct < len(row) else None) or "–"
+            sup  = _clean_str(row[ci_sup]  if ci_sup  < len(row) else None) or "–"
 
-            lates     = _safe_int(row[ci_late] if ci_late < len(row) else 0)
-            left_early= _safe_int(row[ci_le]   if ci_le   < len(row) else 0)
-            absent    = _safe_int(row[ci_abs]   if ci_abs  < len(row) else 0)
-            sick      = _safe_int(row[ci_sick]  if ci_sick < len(row) else 0)
-            leave     = _safe_int(row[ci_lv]    if ci_lv   < len(row) else 0)
+            lates      = _safe_int(row[ci_late] if ci_late < len(row) else 0)
+            left_early = _safe_int(row[ci_le]   if ci_le   < len(row) else 0)
+            absent     = _safe_int(row[ci_abs]  if ci_abs  < len(row) else 0)
+            sick       = _safe_int(row[ci_sick] if ci_sick < len(row) else 0)
+            leave      = _safe_int(row[ci_lv]   if ci_lv   < len(row) else 0)
 
             if ci_pres is not None and ci_pres < len(row):
                 present = _safe_int(row[ci_pres])
             else:
                 present = sum(
-                    1 for c in day_cols
+                    1 for c in day_col_indices
                     if c < len(row) and isinstance(row[c], str)
                     and row[c].strip().lower() == "present"
-                )
-                present += lates + left_early  # late/left-early = attended
+                ) + lates + left_early
 
             pct = None
             if ci_pct is not None and ci_pct < len(row):
@@ -167,7 +188,19 @@ def load_excel(path, progress_cb=None):
                     except ValueError:
                         pass
 
-            records.append({
+            # Capture up to 7 daily status values
+            days = []
+            for c in day_col_indices[:7]:
+                val = row[c] if c < len(row) else None
+                if isinstance(val, str) and val.strip():
+                    days.append(val.strip())
+                else:
+                    days.append("")
+            # Pad to exactly 7
+            while len(days) < 7:
+                days.append("")
+
+            rec = {
                 "week_ending": pd.Timestamp(we),
                 "name":        emp,
                 "account":     acct,
@@ -179,7 +212,11 @@ def load_excel(path, progress_cb=None):
                 "sick":        sick,
                 "leave":       leave,
                 "weekly_pct":  pct,
-            })
+            }
+            for i, d in enumerate(days):
+                rec[f"d{i+1}"] = d
+
+            records.append(rec)
 
     if not records:
         return pd.DataFrame()
@@ -207,7 +244,8 @@ class Loader(QThread):
         try:
             self.done.emit(load_excel(self.path, self.progress.emit))
         except Exception as e:
-            self.err.emit(str(e))
+            import traceback
+            self.err.emit(traceback.format_exc())
 
 
 # ── Chart ─────────────────────────────────────────────────────────────────────
@@ -236,7 +274,8 @@ class Chart(QWidget):
 
         for col, color in STAT_COLORS.items():
             if col in agg.columns:
-                ax.plot(x, agg[col], marker="o", label=col.replace("_", " ").title(),
+                ax.plot(x, agg[col], marker="o",
+                        label=col.replace("_", " ").title(),
                         color=color, linewidth=2, markersize=4)
 
         ax.set_xticks(list(x))
@@ -246,8 +285,8 @@ class Chart(QWidget):
             ax.spines[spine].set_visible(False)
         ax.spines["bottom"].set_color(BORDER)
         ax.spines["left"].set_color(BORDER)
-        ax.set_title(f"Attendance Trend  ·  by {period_label}", color=TXT,
-                     fontsize=13, pad=10)
+        ax.set_title(f"Attendance Trend  ·  by {period_label}",
+                     color=TXT, fontsize=13, pad=10)
         ax.legend(framealpha=0.3, labelcolor=TXT, facecolor=BG_CARD,
                   edgecolor=BORDER, fontsize=9, loc="upper right")
         ax.grid(axis="y", color=BORDER, linestyle="--", alpha=0.5)
@@ -269,35 +308,34 @@ class Card(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(2)
-
         self._lbl = QLabel(label)
         self._lbl.setStyleSheet(f"color:{TXT2}; font-size:11px; border:none;")
         self._val = QLabel("–")
-        self._val.setStyleSheet(f"color:{color}; font-size:26px; font-weight:bold; border:none;")
-
+        self._val.setStyleSheet(
+            f"color:{color}; font-size:26px; font-weight:bold; border:none;")
         lay.addWidget(self._lbl)
         lay.addWidget(self._val)
 
     def set_value(self, v):
-        self._val.setText(f"{v:,}" if isinstance(v, (int, float)) else str(v))
+        self._val.setText(f"{int(v):,}" if isinstance(v, (int, float)) else str(v))
 
 
-# ── Main window ───────────────────────────────────────────────────────────────
+# ── Stylesheet ────────────────────────────────────────────────────────────────
 STYLE = f"""
-QMainWindow, QWidget   {{ background:{BG};  color:{TXT}; font-family:'Segoe UI',Arial,sans-serif; }}
+QMainWindow, QWidget   {{ background:{BG}; color:{TXT}; font-family:'Segoe UI',Arial,sans-serif; }}
 QLabel                 {{ color:{TXT}; }}
 QPushButton            {{ background:{BLUE}; color:#fff; border:none; border-radius:6px; padding:8px 16px; font-size:13px; font-weight:bold; }}
 QPushButton:hover      {{ background:#6ab0ff; }}
 QPushButton#ghost      {{ background:transparent; color:{TXT2}; border:1px solid {BORDER}; }}
 QPushButton#ghost:hover{{ color:{TXT}; border-color:{TXT2}; }}
-QComboBox              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; }}
+QComboBox              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; min-height:28px; }}
 QComboBox::drop-down   {{ border:none; width:20px; }}
-QComboBox QAbstractItemView {{ background:{BG_CARD}; color:{TXT}; selection-background-color:{BLUE}; }}
-QDateEdit              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; }}
+QComboBox QAbstractItemView {{ background:{BG_CARD}; color:{TXT}; selection-background-color:{BLUE}; border:1px solid {BORDER}; }}
+QDateEdit              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; min-height:28px; }}
 QDateEdit::drop-down   {{ border:none; width:20px; }}
-QLineEdit              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; }}
-QGroupBox              {{ color:{TXT2}; border:1px solid {BORDER}; border-radius:8px; margin-top:10px; padding-top:6px; font-size:11px; font-weight:bold; }}
-QGroupBox::title       {{ subcontrol-origin:margin; left:10px; top:-5px; color:{TXT2}; }}
+QLineEdit              {{ background:{BG_CARD}; color:{TXT}; border:1px solid {BORDER}; border-radius:6px; padding:6px 10px; font-size:12px; min-height:28px; }}
+QGroupBox              {{ color:{TXT2}; border:1px solid {BORDER}; border-radius:8px; margin-top:12px; padding-top:8px; font-size:11px; font-weight:bold; }}
+QGroupBox::title       {{ subcontrol-origin:margin; left:10px; top:-6px; color:{TXT2}; padding:0 4px; }}
 QTabWidget::pane       {{ border:1px solid {BORDER}; border-radius:6px; }}
 QTabBar::tab           {{ background:{BG_SIDE}; color:{TXT2}; padding:8px 22px; border-bottom:2px solid transparent; }}
 QTabBar::tab:selected  {{ color:{BLUE}; border-bottom:2px solid {BLUE}; background:{BG}; }}
@@ -306,11 +344,14 @@ QTableWidget::item     {{ padding:5px; }}
 QTableWidget::item:selected {{ background:{BLUE}; color:#fff; }}
 QHeaderView::section   {{ background:{BG_SIDE}; color:{TXT2}; padding:8px; border:none; border-bottom:1px solid {BORDER}; font-weight:bold; font-size:11px; }}
 QScrollBar:vertical    {{ background:{BG}; width:8px; border-radius:4px; }}
-QScrollBar::handle:vertical {{ background:{BORDER}; border-radius:4px; }}
+QScrollBar::handle:vertical {{ background:{BORDER}; border-radius:4px; min-height:30px; }}
+QScrollBar:horizontal  {{ background:{BG}; height:8px; border-radius:4px; }}
+QScrollBar::handle:horizontal {{ background:{BORDER}; border-radius:4px; min-width:30px; }}
 QSplitter::handle      {{ background:{BORDER}; }}
 """
 
 PERIOD_MAP = {"Week": "week", "Month": "month", "Quarter": "quarter", "Year": "year"}
+DAY_NAMES  = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 class App(QMainWindow):
@@ -318,11 +359,11 @@ class App(QMainWindow):
         super().__init__()
         self.df = None
         self.setWindowTitle("FSA Attendance Tracker")
-        self.setMinimumSize(1280, 780)
+        self.setMinimumSize(1300, 800)
         self.setStyleSheet(STYLE)
         self._build()
 
-    # ── UI construction ───────────────────────────────────────────────────────
+    # ── UI ────────────────────────────────────────────────────────────────────
     def _build(self):
         root = QWidget()
         self.setCentralWidget(root)
@@ -335,7 +376,7 @@ class App(QMainWindow):
         split.setHandleWidth(1)
         split.addWidget(self._sidebar())
         split.addWidget(self._content())
-        split.setSizes([240, 1040])
+        split.setSizes([250, 1050])
         vlay.addWidget(split)
 
     def _topbar(self):
@@ -364,31 +405,35 @@ class App(QMainWindow):
 
     def _sidebar(self):
         side = QFrame()
-        side.setFixedWidth(240)
+        side.setFixedWidth(250)
         side.setStyleSheet(f"background:{BG_SIDE};")
         lay = QVBoxLayout(side)
-        lay.setContentsMargins(12, 16, 12, 16)
-        lay.setSpacing(12)
+        lay.setContentsMargins(14, 16, 14, 16)
+        lay.setSpacing(10)
 
         # Period
         g1 = QGroupBox("View By")
         v1 = QVBoxLayout(g1)
+        v1.setContentsMargins(10, 14, 10, 10)
         self._period = QComboBox()
         self._period.addItems(["Week", "Month", "Quarter", "Year"])
         self._period.setCurrentIndex(1)
-        self._period.currentTextChanged.connect(self._refresh)
         v1.addWidget(self._period)
         lay.addWidget(g1)
 
         # Date range
         g2 = QGroupBox("Date Range")
         v2 = QVBoxLayout(g2)
+        v2.setContentsMargins(10, 14, 10, 10)
+        v2.setSpacing(6)
         v2.addWidget(QLabel("From:"))
-        self._d_from = QDateEdit(); self._d_from.setCalendarPopup(True)
-        self._d_from.setDate(QDate(2023, 1, 1))
+        self._d_from = QDateEdit()
+        self._d_from.setCalendarPopup(True)
+        self._d_from.setDate(QDate(2024, 1, 1))
         v2.addWidget(self._d_from)
         v2.addWidget(QLabel("To:"))
-        self._d_to = QDateEdit(); self._d_to.setCalendarPopup(True)
+        self._d_to = QDateEdit()
+        self._d_to.setCalendarPopup(True)
         self._d_to.setDate(QDate.currentDate())
         v2.addWidget(self._d_to)
         lay.addWidget(g2)
@@ -396,29 +441,40 @@ class App(QMainWindow):
         # Filters
         g3 = QGroupBox("Filters")
         v3 = QVBoxLayout(g3)
+        v3.setContentsMargins(10, 14, 10, 10)
+        v3.setSpacing(6)
 
         v3.addWidget(QLabel("Account:"))
-        self._acct = QComboBox(); self._acct.addItem("All Accounts")
+        self._acct = QComboBox()
+        self._acct.addItem("All Accounts")
         v3.addWidget(self._acct)
 
         v3.addWidget(QLabel("Supervisor:"))
-        self._sup = QComboBox(); self._sup.addItem("All Supervisors")
+        self._sup = QComboBox()
+        self._sup.addItem("All Supervisors")
         v3.addWidget(self._sup)
 
-        v3.addWidget(QLabel("Employee:"))
-        self._emp = QLineEdit(); self._emp.setPlaceholderText("Search name…")
+        v3.addWidget(QLabel("Employee search:"))
+        self._emp = QLineEdit()
+        self._emp.setPlaceholderText("Type name…")
         v3.addWidget(self._emp)
 
         lay.addWidget(g3)
 
         apply_btn = QPushButton("Apply Filters")
-        apply_btn.clicked.connect(self._refresh)
+        apply_btn.clicked.connect(self._apply)
         lay.addWidget(apply_btn)
 
         reset_btn = QPushButton("Reset")
         reset_btn.setObjectName("ghost")
         reset_btn.clicked.connect(self._reset)
         lay.addWidget(reset_btn)
+
+        # Status label
+        self._status = QLabel("")
+        self._status.setStyleSheet(f"color:{TXT2}; font-size:10px;")
+        self._status.setWordWrap(True)
+        lay.addWidget(self._status)
 
         lay.addStretch()
         return side
@@ -440,7 +496,6 @@ class App(QMainWindow):
         lay.setContentsMargins(0, 8, 0, 0)
         lay.setSpacing(12)
 
-        # Stat cards
         row = QWidget()
         rlay = QHBoxLayout(row)
         rlay.setSpacing(10)
@@ -468,7 +523,7 @@ class App(QMainWindow):
         self._table = QTableWidget()
         self._table.setAlternatingRowColors(True)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.horizontalHeader().setStretchLastSection(False)
         self._table.verticalHeader().setVisible(False)
         self._table.setSortingEnabled(True)
         lay.addWidget(self._table)
@@ -492,7 +547,6 @@ class App(QMainWindow):
         self._worker.done.connect(self._on_done)
         self._worker.err.connect(self._on_err)
         self._worker.start()
-
         self._file_lbl.setText(os.path.basename(path))
 
     def _on_prog(self, cur, total, name):
@@ -506,7 +560,7 @@ class App(QMainWindow):
             return
         self.df = df
         self._fill_combos()
-        self._refresh()
+        self._apply()
 
     def _on_err(self, msg):
         self._prog.close()
@@ -514,11 +568,26 @@ class App(QMainWindow):
 
     # ── Filters ───────────────────────────────────────────────────────────────
     def _fill_combos(self):
-        accts = sorted(self.df["account"].dropna().unique())
-        self._acct.clear(); self._acct.addItem("All Accounts"); self._acct.addItems(accts)
+        # Only real string values — filter out numeric/junk entries
+        def clean_list(series):
+            vals = []
+            for v in sorted(series.dropna().unique()):
+                s = str(v).strip()
+                if s and s not in ("–", "-", "nan", "None") \
+                        and not re.fullmatch(r"[\d\s\-\.]+", s) \
+                        and len(s) >= 2:
+                    vals.append(s)
+            return vals
 
-        sups = sorted(self.df["supervisor"].dropna().unique())
-        self._sup.clear(); self._sup.addItem("All Supervisors"); self._sup.addItems(sups)
+        accts = clean_list(self.df["account"])
+        self._acct.clear()
+        self._acct.addItem("All Accounts")
+        self._acct.addItems(accts)
+
+        sups = clean_list(self.df["supervisor"])
+        self._sup.clear()
+        self._sup.addItem("All Supervisors")
+        self._sup.addItems(sups)
 
         lo = self.df["week_ending"].min()
         hi = self.df["week_ending"].max()
@@ -530,11 +599,12 @@ class App(QMainWindow):
         self._emp.clear()
         if self.df is not None:
             self._fill_combos()
-            self._refresh()
+            self._apply()
 
-    def _filtered(self):
+    def _get_filtered(self):
         if self.df is None:
             return None
+
         df = self.df.copy()
 
         d0 = self._d_from.date()
@@ -554,14 +624,22 @@ class App(QMainWindow):
 
         return df
 
-    # ── Refresh ───────────────────────────────────────────────────────────────
-    def _refresh(self):
-        df = self._filtered()
-        if df is None or df.empty:
-            return
-        self._update_dash(df)
-        self._update_table(df)
+    def _apply(self):
+        try:
+            df = self._get_filtered()
+            if df is None:
+                return
+            if df.empty:
+                self._status.setText("No records match the current filters.")
+                return
+            self._status.setText(f"{len(df):,} records  ·  {df['name'].nunique()} employees")
+            self._update_dash(df)
+            self._update_table(df)
+        except Exception as e:
+            import traceback
+            QMessageBox.critical(self, "Error", traceback.format_exc())
 
+    # ── Dashboard ─────────────────────────────────────────────────────────────
     def _period_col(self):
         return PERIOD_MAP[self._period.currentText()]
 
@@ -571,59 +649,92 @@ class App(QMainWindow):
 
         pcol = self._period_col()
         agg  = df.groupby(pcol)[list(STAT_COLORS)].sum()
-        # Limit chart to last 52 data points so it stays readable
         if len(agg) > 52:
             agg = agg.tail(52)
         self._chart.plot(agg, self._period.currentText())
 
+    # ── Details table ─────────────────────────────────────────────────────────
     def _update_table(self, df):
-        pcol    = self._period_col()
-        stat_cols = list(STAT_COLORS)
-        display_cols = ["name", "account", "supervisor", pcol] + stat_cols + ["weekly_pct"]
-        display_cols = [c for c in display_cols if c in df.columns]
+        # Compute day-of-week date labels from week_ending (assumed Sunday)
+        # d1=Mon … d7=Sun  →  week_ending - 6 … week_ending
+        day_keys = [f"d{i+1}" for i in range(7)]
 
-        view = df[display_cols].copy()
-        view[pcol] = view[pcol].astype(str)
-        view = view.sort_values([pcol, "name"], ascending=[False, True])
+        # Build column list
+        fixed_front = ["name", "account", "supervisor", "week_ending"]
+        day_cols    = [k for k in day_keys if k in df.columns]
+        stat_cols   = ["present", "lates", "left_early", "absent", "sick", "leave"]
+        all_cols    = fixed_front + day_cols + stat_cols
+
+        view = df[all_cols].copy()
+        view = view.sort_values(["week_ending", "name"], ascending=[False, True])
+
+        # Build human-readable headers
+        # For day cols: derive typical date label from first row's week_ending
+        sample_we = view["week_ending"].iloc[0] if not view.empty else None
+
+        def day_header(key, we):
+            idx = int(key[1]) - 1  # 0-based
+            if we is not None:
+                date = we - timedelta(days=6 - idx)
+                return date.strftime("%-m/%-d")
+            return DAY_NAMES[idx]
 
         headers = {
             "name":        "Employee",
             "account":     "Account",
             "supervisor":  "Supervisor",
-            pcol:          self._period.currentText(),
+            "week_ending": "Week Ending",
             "present":     "Present",
             "absent":      "Absent",
             "lates":       "Lates",
             "left_early":  "Left Early",
             "sick":        "Sick",
             "leave":       "Leave",
-            "weekly_pct":  "Attendance %",
         }
+        for k in day_cols:
+            headers[k] = DAY_NAMES[int(k[1]) - 1]
+
+        color_map = {k: QColor(v) for k, v in STAT_COLORS.items()}
+        day_color_map = {k: QColor(v) for k, v in DAY_COLORS.items()}
 
         self._table.setSortingEnabled(False)
         self._table.clear()
         self._table.setRowCount(len(view))
-        self._table.setColumnCount(len(display_cols))
-        self._table.setHorizontalHeaderLabels([headers.get(c, c) for c in display_cols])
-
-        color_map = {k: QColor(v) for k, v in STAT_COLORS.items()}
+        self._table.setColumnCount(len(all_cols))
+        self._table.setHorizontalHeaderLabels(
+            [headers.get(c, c) for c in all_cols])
 
         for r, (_, row) in enumerate(view.iterrows()):
-            for c, col in enumerate(display_cols):
+            for c, col in enumerate(all_cols):
                 val = row[col]
-                text = "" if val is None else \
-                       f"{val:.1f}%" if col == "weekly_pct" and isinstance(val, float) else \
-                       str(val)
+
+                if col == "week_ending":
+                    text = pd.Timestamp(val).strftime("%-m/%-d/%Y") if pd.notna(val) else ""
+                elif col in stat_cols:
+                    text = str(int(val)) if isinstance(val, (int, float)) and not pd.isna(val) else "0"
+                else:
+                    text = str(val) if val is not None and str(val) not in ("nan", "None") else ""
+
                 item = QTableWidgetItem(text)
                 item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+                # Color stat columns
                 if col in color_map and isinstance(val, (int, float)) and val > 0:
                     item.setForeground(color_map[col])
-                # Right-align numeric columns
-                if col in {*STAT_COLORS, "weekly_pct"}:
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                elif col in stat_cols:
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+
+                # Color day status cells
+                if col in day_cols and text:
+                    day_color = day_color_map.get(text.lower())
+                    if day_color:
+                        item.setForeground(day_color)
+
                 self._table.setItem(r, c, item)
 
         self._table.setSortingEnabled(True)
+        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
