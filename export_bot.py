@@ -181,27 +181,27 @@ def select_all_rows(page: Page) -> int:
 def export_download(page: Page, cfg: Config) -> Path:
     log(f"Exporting as '{cfg.export_type}'...")
 
-    # Open the export modal.
+    # Open the export modal (for parity with the manual flow).
     page.click("#export-members")
 
-    # The layout radios have ids Authoriti (basic), Authoriti1 (expanded),
-    # Authoriti2 (attribute). Map export_type -> the radio value and click the
-    # matching input, which sets #export_type and submits #exportForm.
-    radio = page.locator(f"input.Authoriti[value='{cfg.export_type}']").first
-    radio.wait_for(state="attached", timeout=15_000)
+    # The layout radios (Basic / Expanded / Attribute) are Bootstrap
+    # button-group radios whose <input> is visually hidden, so a normal
+    # Playwright click waits forever for it to become "visible". Instead we do
+    # exactly what the page's own click handler does: set #export_type and
+    # submit #exportForm. This is reliable and can't hang on actionability.
+    page.wait_for_selector(
+        f"input.Authoriti[value='{cfg.export_type}']", state="attached", timeout=15_000
+    )
 
     with page.expect_download(timeout=120_000) as dl_info:
-        # Prefer clicking the visible radio; fall back to submitting directly.
-        try:
-            radio.click()
-        except Exception:
-            page.evaluate(
-                """(t) => {
-                    document.getElementById('export_type').value = t;
-                    document.getElementById('exportForm').submit();
-                }""",
-                cfg.export_type,
-            )
+        page.evaluate(
+            """(t) => {
+                document.getElementById('export_type').value = t;
+                var f = document.getElementById('exportForm');
+                if (f.requestSubmit) { f.requestSubmit(); } else { f.submit(); }
+            }""",
+            cfg.export_type,
+        )
     download = dl_info.value
 
     out_dir = Path(cfg.download_dir)
