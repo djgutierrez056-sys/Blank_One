@@ -26,9 +26,10 @@ Your credentials live in a git-ignored `.env` file, so they never get committed.
 | Command                | What it does                                                   |
 |------------------------|---------------------------------------------------------------|
 | `python dashboard.py`  | **Desktop dashboard** with a progress bar for each export.    |
+| `python export_bot.py`             | **Both** exports (evaluations + coachings).       |
 | `python export_bot.py evaluations` | Evaluations only, terminal progress bar.          |
 | `python export_bot.py coachings`   | Coaching sessions only.                           |
-| `python export_bot.py both`        | Both, one after the other.                        |
+| `python export_bot.py both`        | Both, one after the other (same as no argument).  |
 
 > The dashboard uses **Tkinter**, which ships with the standard Python
 > installer on Windows and macOS (no `pip install` needed). On Linux install it

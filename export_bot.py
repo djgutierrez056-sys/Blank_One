@@ -2,7 +2,7 @@
 C2 Perform export — command-line runner.
 
 Usage:
-    python export_bot.py                 # evaluations (default)
+    python export_bot.py                 # both (default)
     python export_bot.py evaluations     # QA evaluations only
     python export_bot.py coachings       # coaching sessions only
     python export_bot.py both            # both, one after the other
@@ -29,7 +29,7 @@ def _bar(pct: int, msg: str) -> None:
 
 
 def main(argv: list[str]) -> int:
-    arg = (argv[1].lower() if len(argv) > 1 else "evaluations")
+    arg = (argv[1].lower() if len(argv) > 1 else "both")
     tasks = {
         "evaluations": ["evaluations"],
         "coachings": ["coachings"],
