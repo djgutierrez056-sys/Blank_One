@@ -402,10 +402,19 @@ def _export_coachings_detailed(page: Page, cfg: Config, progress: ProgressFn) ->
 # ---------------------------------------------------------------------------
 
 def _strip_tags(s: str) -> str:
+    # Drop inline images first -- coaches often paste screenshots into comments
+    # as huge base64 data URIs, which would otherwise flood the spreadsheet.
+    # Nuke the data URI itself (handles even a malformed/unterminated <img>),
+    # then remove the (now short) <img> tag, then any stray one.
+    s = re.sub(r"(?is)data:image/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+", " [image] ", s)
+    s = re.sub(r"(?is)<img\b[^>]*>", " [image] ", s)
+    s = re.sub(r"(?is)<img\b[^>]*", " [image] ", s)  # unterminated <img ...
     s = re.sub(r"(?is)<br\s*/?>", " ", s)
     s = re.sub(r"(?is)</p>\s*<p>", " | ", s)
     s = re.sub(r"(?is)<[^>]+>", "", s)
     s = html_module.unescape(s)
+    # Collapse any run of repeated image markers into one.
+    s = re.sub(r"(?:\[image\]\s*)+", "[image] ", s)
     return re.sub(r"\s+", " ", s).strip()
 
 
