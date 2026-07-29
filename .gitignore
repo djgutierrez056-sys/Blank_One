@@ -1,0 +1,23 @@
+# Credentials & secrets (never commit)
+.env
+auth_state.json
+
+# Downloaded exports
+downloads/
+*.xlsx
+*.csv
+*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# PyCharm
+.idea/
+
+# OS
+.DS_Store
