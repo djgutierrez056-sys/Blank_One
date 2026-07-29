@@ -77,12 +77,18 @@ def login(page: Page, cfg: Config) -> None:
             )
         return
 
-    email = page.locator(
+    # The login uses a username (e.g. "Jonathan.Gutierrez"), not an email.
+    # Rather than guess the field's name, take the first visible text-like input
+    # that isn't the password box — that's the username field on this page.
+    username = page.locator(
         "input[type='email'], input[name='email'], input[name='username'], "
-        "input[id='email'], input[id='username']"
+        "input[id='email'], input[id='username'], input[name='user'], "
+        "input[type='text']:visible, "
+        "input:not([type='password']):not([type='hidden']):not([type='submit'])"
+        ":not([type='button']):not([type='checkbox']):visible"
     ).first
-    if email.count():
-        email.fill(cfg.email)
+    if username.count():
+        username.fill(cfg.username)
     password.fill(cfg.password)
 
     # Submit via the login button if we can find one, else press Enter.
@@ -230,7 +236,10 @@ def main() -> int:
             if not is_logged_in(page):
                 login(page, cfg)
                 if not is_logged_in(page):
-                    log("Login did not succeed. Check your credentials in .env.")
+                    log(
+                        "Login did not succeed. Check C2_USERNAME / C2_PASSWORD "
+                        "in .env."
+                    )
                     return 1
             # Persist the session so future runs skip the login step.
             context.storage_state(path=str(AUTH_STATE_FILE))

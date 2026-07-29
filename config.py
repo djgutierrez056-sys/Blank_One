@@ -43,7 +43,11 @@ def _default_end_date() -> str:
 
 @dataclass
 class Config:
-    email: str = field(default_factory=lambda: _env("C2_EMAIL"))
+    # Login uses a C2 Perform username (e.g. "Jonathan.Gutierrez").
+    # C2_EMAIL is accepted too, for backwards compatibility.
+    username: str = field(
+        default_factory=lambda: _env("C2_USERNAME") or _env("C2_EMAIL")
+    )
     password: str = field(default_factory=lambda: _env("C2_PASSWORD"))
 
     form_name: str = field(default_factory=lambda: _env("C2_FORM_NAME", "NEW GA"))
@@ -67,10 +71,10 @@ class Config:
     )
 
     def validate(self) -> None:
-        if not self.email or not self.password:
+        if not self.username or not self.password:
             raise SystemExit(
                 "Missing credentials. Copy .env.example to .env and set "
-                "C2_EMAIL and C2_PASSWORD."
+                "C2_USERNAME and C2_PASSWORD."
             )
         if self.export_type not in VALID_EXPORT_TYPES:
             raise SystemExit(

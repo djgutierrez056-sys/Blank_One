@@ -32,7 +32,8 @@ Your credentials live in a git-ignored `.env` file, so they never get committed.
    cp .env.example .env
    ```
 
-   Open `.env` and set `C2_EMAIL` and `C2_PASSWORD`. That file is git-ignored.
+   Open `.env` and set `C2_USERNAME` (your login name, e.g. `Jonathan.Gutierrez`)
+   and `C2_PASSWORD`. That file is git-ignored.
 
 5. **Run it** — right-click `export_bot.py` → **Run 'export_bot'**, or:
 
@@ -60,7 +61,7 @@ again.
 
 | Variable          | Default                     | Meaning                                                                 |
 |-------------------|-----------------------------|-------------------------------------------------------------------------|
-| `C2_EMAIL`        | —                           | Your login email. **Required.**                                         |
+| `C2_USERNAME`     | —                           | Your login username (e.g. `Jonathan.Gutierrez`). **Required.**          |
 | `C2_PASSWORD`     | —                           | Your login password. **Required.**                                      |
 | `C2_FORM_NAME`    | `NEW GA`                    | Form to select in the *Form Name* dropdown.                             |
 | `C2_EXPORT_TYPE`  | `attribute_information`     | `basic_information`, `basic_information_expanded`, or `attribute_information`. |
