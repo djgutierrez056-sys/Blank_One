@@ -142,7 +142,7 @@ class Dashboard(tk.Tk):
         self.eval_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
         self.coach_panel = ExportPanel(
-            body, "Coachings", "Coaching Sessions → Excel",
+            body, "Coachings", "Coaching Sessions → full details (CSV)",
             "coachings", self,
         )
         self.coach_panel.grid(row=0, column=1, sticky="nsew", padx=(8, 0))

@@ -14,7 +14,10 @@ with **live progress bars** in a desktop dashboard:
 **Coaching Sessions** (`coaching/coach/coachings.php` — the **SESSIONS** tab)
 1. Opens the **Coaching Sessions** page.
 2. Sets the **Date Range** to a **Custom Date Range** (same Jan 1 → today default).
-3. Reloads the results and clicks the **Excel export** button to **download** the file.
+3. For each session it opens the **view** (the eye icon) and scrapes **every
+   detail field** — Company, Coach, Supervisor, Employees, Account Name,
+   Coaching Type, Comments, Result, etc. — into a single **CSV**.
+   (Set `C2_COACHING_MODE=summary` for the site's quick 6-column Excel export instead.)
 
 Your credentials live in a git-ignored `.env` file, so they never get committed.
 
@@ -85,6 +88,8 @@ again.
 | `C2_PASSWORD`     | —                           | Your login password. **Required.**                                      |
 | `C2_FORM_NAME`    | `NEW GA`                    | Form to select in the *Form Name* dropdown.                             |
 | `C2_EXPORT_TYPE`  | `attribute_information`     | `basic_information`, `basic_information_expanded`, or `attribute_information`. |
+| `C2_COACHING_MODE`| `detailed`                  | `detailed` (scrape every field → CSV) or `summary` (site Excel button). |
+| `C2_COACHING_LIMIT`| `0`                        | In detailed mode, cap sessions scraped (`0` = all). Good for a test run. |
 | `C2_START_DATE`   | Jan 1 of current year       | Start of the date range for **both** exports (`mm/dd/yyyy`).            |
 | `C2_END_DATE`     | today                       | End of the date range for **both** exports (`mm/dd/yyyy`).             |
 | `C2_HEADLESS`     | `false`                     | `true` runs the browser invisibly.                                      |
@@ -114,10 +119,15 @@ again.
 **Coachings**
 - The **SESSIONS** tab is `coaching/coach/coachings.php`.
 - Selecting **Custom Date Range** (`#dr10`) and setting `#custom_daterange_from` /
-  `#custom_daterange_to`, then calling the page's `load_table('Main')`, reloads
+  `#custom_daterange_to`, then triggering the page's `load_table('Main')`, reloads
   the client-side DataTable for that range.
-- **Export** is the DataTables `.buttons-excel` button, which builds the `.xlsx`
-  in the browser and downloads it.
+- **Detailed mode** (default): for each row, the eye icon calls
+  `agentViewFunction(formid, "view", agent_id)`, which POSTs to
+  `coaching/coach/ajax/agent-ajax.php` (`action=getCoachingFormDetails`) and
+  returns the detail HTML. The tool fetches these in batches, parses each
+  session's fields, and writes them all to one CSV.
+- **Summary mode**: the DataTables `.buttons-excel` button, which builds a
+  6-column `.xlsx` in the browser and downloads it.
 
 ## Notes
 

@@ -15,7 +15,11 @@ progress bar. The callback signature is ``progress(percent: int, message: str)``
 
 from __future__ import annotations
 
+import csv
+import html as html_module
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Sequence
 
@@ -182,14 +186,33 @@ def export_evaluations(page: Page, cfg: Config, progress: ProgressFn = _noop) ->
 # Coachings export (coaching/coach/coachings.php)
 # ---------------------------------------------------------------------------
 
+AGENT_AJAX_URL = f"{BASE_URL}/coaching/coach/ajax/agent-ajax.php"
+
+# Preferred leading column order for the detailed coaching CSV. Any extra
+# fields discovered in a form are appended after these, in first-seen order.
+_COACHING_COLUMNS = [
+    "Coaching ID", "Form", "Company", "Coach", "Supervisor", "Session ID",
+    "Acceptance Status", "Follow Up Date", "Employees", "Date of Session",
+    "Type", "Account Name", "Coaching Type", "Comments", "Result",
+]
+
+
 def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> Path:
-    progress(30, "Opening Coaching Sessions...")
+    """Dispatch to the detailed or summary coaching export based on config."""
+    if cfg.coaching_mode == "summary":
+        return _export_coachings_summary(page, cfg, progress)
+    return _export_coachings_detailed(page, cfg, progress)
+
+
+def _open_and_filter_coachings(page: Page, cfg: Config, progress: ProgressFn) -> int:
+    """Open the Coaching Sessions page, apply the custom date range, wait for
+    the client-side DataTable to finish loading, and return the row count."""
+    progress(20, "Opening Coaching Sessions...")
     page.goto(COACHINGS_URL, wait_until="domcontentloaded", timeout=60_000)
     page.wait_for_selector("#coachingTbl", timeout=30_000)
-    # Let the table's first (default) load settle so its DataTable exists.
     page.wait_for_selector(".buttons-excel", timeout=30_000)
 
-    progress(50, f"Filtering {cfg.start_date} to {cfg.end_date}...")
+    progress(35, f"Filtering {cfg.start_date} to {cfg.end_date}...")
     # Switch to a Custom Date Range and set the litepicker inputs, then reload
     # the client-side DataTable for those dates.
     #
@@ -265,8 +288,13 @@ def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> P
             catch (e) { return 0; }
         }"""
     )
-    progress(85, f"Exporting {total} coaching session(s)...")
+    return int(total or 0)
 
+
+def _export_coachings_summary(page: Page, cfg: Config, progress: ProgressFn) -> Path:
+    """Fast path: the site's own DataTables Excel button (6 summary columns)."""
+    total = _open_and_filter_coachings(page, cfg, progress)
+    progress(85, f"Exporting {total} coaching session(s)...")
     # load_table() re-creates the DataTable (destroy:true) and appends a fresh
     # set of export buttons to #buttons without clearing the old ones. Only the
     # most recently added Excel button is bound to the current (custom-date)
@@ -275,6 +303,162 @@ def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> P
         page.locator(".buttons-excel").last.click()
     dest = _save_download(dl_info.value, cfg, "coachings")
     progress(100, f"Saved: {dest.name}")
+    return dest
+
+
+def _export_coachings_detailed(page: Page, cfg: Config, progress: ProgressFn) -> Path:
+    """Detailed path: open each session's "view" (the eye icon) and scrape every
+    field into one CSV. Uses the same AJAX the page uses (agent-ajax.php,
+    action=getCoachingFormDetails) fetched in batches from inside the page."""
+    total_rows = _open_and_filter_coachings(page, cfg, progress)
+
+    # Pull each row's coaching id + agent id. The agent id is embedded in the
+    # row's Action HTML: agentViewFunction(<formid>, "view", <agent_id>).
+    rows_raw = page.evaluate(
+        """() => {
+            try {
+                var dt = window.jQuery('#coachingTbl').DataTable();
+                return dt.rows().data().toArray().map(function (r) {
+                    return { coachID: r.coachID, action: r.Action || '' };
+                });
+            } catch (e) { return []; }
+        }"""
+    )
+
+    pairs = []
+    for r in rows_raw:
+        m = re.search(
+            r"agentViewFunction\(\s*(\d+)\s*,\s*[\"']view[\"']\s*,\s*(\d+)\s*\)",
+            r.get("action", ""),
+        )
+        coach_id = r.get("coachID") or (m.group(1) if m else None)
+        agent_id = m.group(2) if m else ""
+        if coach_id:
+            pairs.append((str(coach_id), str(agent_id)))
+
+    if cfg.coaching_limit and cfg.coaching_limit > 0:
+        pairs = pairs[: cfg.coaching_limit]
+    if not pairs:
+        raise RuntimeError("No coaching sessions found for the selected range.")
+
+    total = len(pairs)
+    parsed: List[dict] = []
+    batch_size = 12
+    for start in range(0, total, batch_size):
+        batch = pairs[start : start + batch_size]
+        htmls = page.evaluate(
+            """async ([items, url]) => {
+                return await Promise.all(items.map(async function (it) {
+                    try {
+                        var body = new URLSearchParams({
+                            actiontype: 'view',
+                            formid: String(it[0]),
+                            agent_id: String(it[1]),
+                            action: 'getCoachingFormDetails'
+                        });
+                        var resp = await fetch(url, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: body.toString(),
+                            credentials: 'same-origin'
+                        });
+                        return await resp.text();
+                    } catch (e) { return ''; }
+                }));
+            }""",
+            [batch, AGENT_AJAX_URL],
+        )
+        for (coach_id, _agent_id), html in zip(batch, htmls):
+            parsed.append(_parse_coaching_detail(html or "", coach_id))
+
+        done = min(start + batch_size, total)
+        progress(55 + int(done / total * 40), f"Fetched {done} of {total} details...")
+
+    progress(96, "Writing spreadsheet...")
+    dest = _save_rows_csv(parsed, cfg, "coachings_detailed")
+    progress(100, f"Saved: {dest.name}")
+    return dest
+
+
+# ---------------------------------------------------------------------------
+# Coaching detail parsing + CSV output
+# ---------------------------------------------------------------------------
+
+def _strip_tags(s: str) -> str:
+    s = re.sub(r"(?is)<br\s*/?>", " ", s)
+    s = re.sub(r"(?is)</p>\s*<p>", " | ", s)
+    s = re.sub(r"(?is)<[^>]+>", "", s)
+    s = html_module.unescape(s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _parse_coaching_detail(html: str, coach_id: str) -> dict:
+    """Parse the detail HTML fragment returned by getCoachingFormDetails into a
+    flat {field: value} dict. Handles the fixed 'Form Details' table, the
+    employee list, and the variable 'sm-title' sections that differ per form."""
+    row: dict = {"Coaching ID": str(coach_id)}
+
+    m = re.search(r"(?is)action-plan-header-lg[^>]*>(.*?)</div>", html)
+    if m:
+        row["Form"] = _strip_tags(m.group(1))
+
+    mt = re.search(
+        r'(?is)<table[^>]*class="[^"]*form-details[^"]*"[^>]*>(.*?)</table>', html
+    )
+    if mt:
+        for th, td in re.findall(r"(?is)<th>(.*?)</th>\s*<td>(.*?)</td>", mt.group(1)):
+            key = _strip_tags(th)
+            if key:
+                row[key] = _strip_tags(td)
+
+    me = re.search(
+        r'(?is)<ul[^>]*class="[^"]*assigned-users[^"]*"[^>]*>(.*?)</ul>', html
+    )
+    if me:
+        names = [_strip_tags(x) for x in re.findall(r"(?is)<h6>(.*?)</h6>", me.group(1))]
+        row["Employees"] = "; ".join(n for n in names if n)
+
+    # Variable sections: each <h6 class="sm-title">Heading</h6> then its value.
+    parts = re.split(r'(?is)<h6[^>]*class="[^"]*sm-title[^"]*"[^>]*>(.*?)</h6>', html)
+    for i in range(1, len(parts), 2):
+        title = _strip_tags(parts[i])
+        body = parts[i + 1] if i + 1 < len(parts) else ""
+        body = re.split(r"(?is)Back to Dashboard|customTableLoader", body)[0]
+        ps = re.findall(r"(?is)<p>(.*?)</p>", body)
+        if ps:
+            val = " | ".join(v for v in (_strip_tags(p) for p in ps) if v)
+        else:
+            val = _strip_tags(body)
+        if title and val.startswith(title + " "):
+            val = val[len(title) + 1 :]
+        if title and title not in ("Form Details", "Employees"):
+            row[title] = val
+    return row
+
+
+def _save_rows_csv(rows: List[dict], cfg: Config, prefix: str) -> Path:
+    out_dir = Path(cfg.download_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Column order: the preferred leading columns first, then any extra fields
+    # discovered (in first-seen order).
+    columns = list(_COACHING_COLUMNS)
+    for row in rows:
+        for key in row:
+            if key not in columns:
+                columns.append(key)
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = out_dir / f"{prefix}_{stamp}.csv"
+    # utf-8-sig so Excel opens accented characters correctly.
+    with open(dest, "w", newline="", encoding="utf-8-sig") as fh:
+        writer = csv.DictWriter(fh, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
     return dest
 
 

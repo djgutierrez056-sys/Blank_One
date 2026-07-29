@@ -62,6 +62,18 @@ class Config:
         default_factory=lambda: _env("C2_END_DATE") or _default_end_date()
     )
 
+    # Coaching export detail level:
+    #   "detailed" -> open each session's view and scrape every field (slower)
+    #   "summary"  -> the site's quick Excel button (6 columns, fast)
+    coaching_mode: str = field(
+        default_factory=lambda: _env("C2_COACHING_MODE", "detailed").lower()
+    )
+    # Cap how many coaching sessions to scrape in detailed mode (0 = all).
+    # Handy for a quick test run.
+    coaching_limit: int = field(
+        default_factory=lambda: int(_env("C2_COACHING_LIMIT", "0") or "0")
+    )
+
     headless: bool = field(
         default_factory=lambda: _env("C2_HEADLESS", "false").lower()
         in ("1", "true", "yes")
