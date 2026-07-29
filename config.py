@@ -73,6 +73,17 @@ class Config:
     coaching_limit: int = field(
         default_factory=lambda: int(_env("C2_COACHING_LIMIT", "0") or "0")
     )
+    # Acceptance statuses to skip in detailed mode (comma-separated, case-
+    # insensitive) -- e.g. "Draft" or "Draft,Notes Only". Empty = keep all.
+    coaching_skip_status: frozenset = field(
+        default_factory=lambda: frozenset(
+            s.strip().lower()
+            # os.getenv (not _env) so an explicit empty value clears the list;
+            # only an absent variable falls back to the "Draft" default.
+            for s in os.getenv("C2_COACHING_SKIP_STATUS", "Draft").split(",")
+            if s.strip()
+        )
+    )
 
     headless: bool = field(
         default_factory=lambda: _env("C2_HEADLESS", "false").lower()

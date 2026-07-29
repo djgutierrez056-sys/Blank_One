@@ -312,21 +312,33 @@ def _export_coachings_detailed(page: Page, cfg: Config, progress: ProgressFn) ->
     action=getCoachingFormDetails) fetched in batches from inside the page."""
     total_rows = _open_and_filter_coachings(page, cfg, progress)
 
-    # Pull each row's coaching id + agent id. The agent id is embedded in the
-    # row's Action HTML: agentViewFunction(<formid>, "view", <agent_id>).
+    # Pull each row's coaching id + agent id + status. The agent id is embedded
+    # in the row's Action HTML: agentViewFunction(<formid>, "view", <agent_id>).
+    # The plain status text is the row's hidden field (falls back to the title
+    # on the status icon).
     rows_raw = page.evaluate(
         """() => {
             try {
                 var dt = window.jQuery('#coachingTbl').DataTable();
                 return dt.rows().data().toArray().map(function (r) {
-                    return { coachID: r.coachID, action: r.Action || '' };
+                    var status = r.hiddenfield || '';
+                    if (!status) {
+                        var m = /title=["']([^"']+)["']/i.exec(r.AcceptanceStatus || '');
+                        if (m) { status = m[1]; }
+                    }
+                    return { coachID: r.coachID, action: r.Action || '', status: status };
                 });
             } catch (e) { return []; }
         }"""
     )
 
     pairs = []
+    skipped = 0
     for r in rows_raw:
+        status = (r.get("status") or "").strip()
+        if status.lower() in cfg.coaching_skip_status:
+            skipped += 1
+            continue
         m = re.search(
             r"agentViewFunction\(\s*(\d+)\s*,\s*[\"']view[\"']\s*,\s*(\d+)\s*\)",
             r.get("action", ""),
@@ -336,6 +348,8 @@ def _export_coachings_detailed(page: Page, cfg: Config, progress: ProgressFn) ->
         if coach_id:
             pairs.append((str(coach_id), str(agent_id)))
 
+    if skipped:
+        progress(53, f"Skipped {skipped} ({', '.join(sorted(cfg.coaching_skip_status))}).")
     if cfg.coaching_limit and cfg.coaching_limit > 0:
         pairs = pairs[: cfg.coaching_limit]
     if not pairs:

@@ -90,6 +90,7 @@ again.
 | `C2_EXPORT_TYPE`  | `attribute_information`     | `basic_information`, `basic_information_expanded`, or `attribute_information`. |
 | `C2_COACHING_MODE`| `detailed`                  | `detailed` (scrape every field → CSV) or `summary` (site Excel button). |
 | `C2_COACHING_LIMIT`| `0`                        | In detailed mode, cap sessions scraped (`0` = all). Good for a test run. |
+| `C2_COACHING_SKIP_STATUS`| `Draft`              | Skip sessions with these Acceptance Statuses (comma-separated). Empty = keep all. |
 | `C2_START_DATE`   | Jan 1 of current year       | Start of the date range for **both** exports (`mm/dd/yyyy`).            |
 | `C2_END_DATE`     | today                       | End of the date range for **both** exports (`mm/dd/yyyy`).             |
 | `C2_HEADLESS`     | `false`                     | `true` runs the browser invisibly.                                      |
