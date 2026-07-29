@@ -190,21 +190,44 @@ def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> P
     page.wait_for_selector(".buttons-excel", timeout=30_000)
 
     progress(50, f"Filtering {cfg.start_date} to {cfg.end_date}...")
-    # Switch to a custom date range, set the litepicker inputs, and ask the
-    # page's own loader to reload the client-side DataTable with those dates.
+    # Switch to a Custom Date Range and set the litepicker inputs, then reload
+    # the client-side DataTable for those dates.
+    #
+    # Two important details learned from the page's own JS:
+    #  * The ".daterange" change handler only reveals the date box for custom;
+    #    it does NOT reload the table (the page waits for a litepicker pick).
+    #  * load_table('Main') is what actually re-fetches with the DOM values. We
+    #    trigger it through the "#coach_id" change handler, which is bound in the
+    #    page's scope and calls load_table for us -- this works even if
+    #    load_table isn't reachable from injected script scope. We still call
+    #    load_table directly when it is reachable, as a belt-and-suspenders path.
     with page.expect_response(
         lambda r: "coaching_sessions.php" in r.url and "daterange=custom" in r.url,
         timeout=90_000,
     ):
         page.evaluate(
             """([frm, to]) => {
-                var custom = document.getElementById('dr10');
-                if (custom) { custom.checked = true; }
-                var f = document.getElementById('custom_daterange_from');
-                var t = document.getElementById('custom_daterange_to');
-                if (f) { f.value = frm; }
-                if (t) { t.value = to; }
-                if (typeof load_table === 'function') { load_table('Main'); }
+                var $ = window.jQuery;
+                if ($) {
+                    $('#dr10').prop('checked', true);
+                    $('#custom_date_container').show();
+                    $('#custom_daterange_from').val(frm);
+                    $('#custom_daterange_to').val(to);
+                    if (typeof load_table === 'function') {
+                        load_table('Main');
+                    } else {
+                        // Fire a page-bound handler that calls load_table('Main').
+                        $('#coach_id').trigger('change');
+                    }
+                } else {
+                    var c = document.getElementById('dr10');
+                    if (c) { c.checked = true; }
+                    var f = document.getElementById('custom_daterange_from');
+                    var t = document.getElementById('custom_daterange_to');
+                    if (f) { f.value = frm; }
+                    if (t) { t.value = to; }
+                    if (typeof load_table === 'function') { load_table('Main'); }
+                }
             }""",
             [cfg.start_date, cfg.end_date],
         )
@@ -222,8 +245,12 @@ def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> P
     total = page.locator("#coachingTbl tbody tr").count()
     progress(85, f"Exporting coaching sessions ({total} shown per page)...")
 
+    # load_table() re-creates the DataTable (destroy:true) and appends a fresh
+    # set of export buttons to #buttons without clearing the old ones. Only the
+    # most recently added Excel button is bound to the current (custom-date)
+    # DataTable, so click the last one.
     with page.expect_download(timeout=120_000) as dl_info:
-        page.click(".buttons-excel")
+        page.locator(".buttons-excel").last.click()
     dest = _save_download(dl_info.value, cfg, "coachings")
     progress(100, f"Saved: {dest.name}")
     return dest
