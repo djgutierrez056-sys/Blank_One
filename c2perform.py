@@ -232,18 +232,40 @@ def export_coachings(page: Page, cfg: Config, progress: ProgressFn = _noop) -> P
             [cfg.start_date, cfg.end_date],
         )
 
-    # Wait for the DataTable to finish drawing the fetched rows.
-    progress(70, "Loading coaching sessions...")
+    # Wait for the table to ACTUALLY load its data. This is a client-side
+    # DataTable (sAjaxSource, no serverSide): the server returns every row in
+    # one response and DataTables paginates in the browser, so the full dataset
+    # lives in the DataTable's internal store -- NOT in the DOM (only ~20 rows
+    # are rendered at a time). Checking the DOM would pass instantly and export
+    # before the big AJAX load finished, producing a headers-only file.
+    #
+    # Instead poll the DataTables API until it reports loaded rows and is no
+    # longer in its "processing" state.
+    progress(70, "Loading coaching sessions (this can take a moment)...")
     try:
         page.wait_for_function(
-            "() => document.querySelectorAll('#coachingTbl tbody tr').length > 0",
-            timeout=60_000,
+            """() => {
+                try {
+                    var $ = window.jQuery;
+                    if (!$ || !$.fn || !$.fn.dataTable) { return false; }
+                    if (!$.fn.dataTable.isDataTable('#coachingTbl')) { return false; }
+                    var dt = $('#coachingTbl').DataTable();
+                    var processing = $('#coachingTbl_processing').is(':visible');
+                    return dt.rows().count() > 0 && !processing;
+                } catch (e) { return false; }
+            }""",
+            timeout=180_000,
         )
     except PWTimeoutError:
         pass  # possibly zero results in range; export whatever is there
 
-    total = page.locator("#coachingTbl tbody tr").count()
-    progress(85, f"Exporting coaching sessions ({total} shown per page)...")
+    total = page.evaluate(
+        """() => {
+            try { return window.jQuery('#coachingTbl').DataTable().rows().count(); }
+            catch (e) { return 0; }
+        }"""
+    )
+    progress(85, f"Exporting {total} coaching session(s)...")
 
     # load_table() re-creates the DataTable (destroy:true) and appends a fresh
     # set of export buttons to #buttons without clearing the old ones. Only the
