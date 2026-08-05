@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QPainter, QPixmap, QWheelEvent
+from PySide6.QtGui import QAction, QActionGroup, QColor, QMouseEvent, QPainter, QPixmap, QWheelEvent
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -47,10 +47,37 @@ class DesignView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.scale(0.15, 0.15)  # start zoomed out since scene units are mm
+        self._panning = False
+        self._pre_pan_drag_mode = QGraphicsView.DragMode.RubberBandDrag
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self._panning = True
+            self._pre_pan_drag_mode = self.dragMode()
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+            fake = QMouseEvent(
+                event.type(), event.position(), event.globalPosition(),
+                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, event.modifiers(),
+            )
+            super().mousePressEvent(fake)
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._panning and event.button() == Qt.MouseButton.MiddleButton:
+            fake = QMouseEvent(
+                event.type(), event.position(), event.globalPosition(),
+                Qt.MouseButton.LeftButton, Qt.MouseButton.LeftButton, event.modifiers(),
+            )
+            super().mouseReleaseEvent(fake)
+            self.setDragMode(self._pre_pan_drag_mode)
+            self._panning = False
+            return
+        super().mouseReleaseEvent(event)
 
 
 class PropertyPanel(QWidget):

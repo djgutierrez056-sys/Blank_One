@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.geometry import closest_point_on_segment
+from app.icons import draw_icon
 from app.models import PlacedItem
 from app.units import format_length
 
@@ -130,11 +131,14 @@ class FurnitureItem(QGraphicsItem):
         painter.setPen(pen)
         painter.drawRect(r)
 
+        draw_icon(painter, r, self.model.item_type)
+
         painter.setPen(QPen(QColor("#222222")))
         font = painter.font()
-        font.setPointSizeF(max(8.0, min(r.width(), r.height()) / 10))
+        font.setPointSizeF(max(7.0, min(r.width(), r.height()) / 12))
         painter.setFont(font)
-        painter.drawText(r, Qt.AlignmentFlag.AlignCenter, self.model.label)
+        label_strip = QRectF(r.left(), r.bottom() - r.height() * 0.22, r.width(), r.height() * 0.22)
+        painter.drawText(label_strip, Qt.AlignmentFlag.AlignCenter, self.model.label)
 
         if self.isSelected():
             dim_text = f"{format_length(self.model.width)} x {format_length(self.model.height)}"
