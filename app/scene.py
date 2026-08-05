@@ -1,20 +1,21 @@
 """QGraphicsScene subclass: grid background, wall drawing mode, item management.
 
-Scene coordinates are millimeters. The scene owns the authoritative Project
-data via add/remove helpers so save/load and the graphics items never drift
-out of sync.
+Scene coordinates are millimeters. The scene edits one Floor's data at a time
+via add/remove helpers so save/load and the graphics items never drift out of
+sync; switching floors calls rebuild_from_floor() with a different Floor.
 """
 from __future__ import annotations
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QKeyEvent, QPainter, QPen, QUndoStack
+from PySide6.QtGui import QBrush, QColor, QKeyEvent, QPainter, QPen, QPolygonF, QUndoStack
 from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsScene, QGraphicsSceneMouseEvent
 
 from app.commands import AddItemCommand, DeleteItemsCommand, ModifyModelCommand
 from app.items.furniture_item import FurnitureItem
 from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
-from app.models import PlacedItem, Project, RoomLabel, Wall, next_id
+from app.models import Floor, PlacedItem, RoomLabel, Wall, next_id
+from app.units import format_area
 
 MINOR_GRID_MM = 100.0
 MAJOR_GRID_MM = 1000.0
@@ -28,35 +29,41 @@ NUDGE_KEYS = {
 
 
 class DesignScene(QGraphicsScene):
-    def __init__(self, project: Project | None = None):
+    def __init__(self, floor: Floor | None = None, undo_stack: QUndoStack | None = None):
         super().__init__()
-        self.project = project or Project()
+        self.floor = floor or Floor(id=next_id())
         self.setSceneRect(QRectF(-20000, -20000, 40000, 40000))
         self.mode = "select"  # "select" | "draw_wall"
         self._pending_wall_start: QPointF | None = None
         self._preview_line: QGraphicsLineItem | None = None
-        self.undo_stack = QUndoStack(self)
+        self.undo_stack = undo_stack or QUndoStack(self)
         self._clipboard: list[tuple[str, dict]] = []
         self.active_guides: list[QLineF] = []
-        self.rebuild_from_project(self.project)
+        self.detected_rooms: list[tuple[QPolygonF, float]] = []
+        self.rebuild_from_floor(self.floor, undo_stack=self.undo_stack)
 
-    # -- project sync -----------------------------------------------------
-    def rebuild_from_project(self, project: Project) -> None:
+    # -- floor sync -----------------------------------------------------
+    def rebuild_from_floor(self, floor: Floor, undo_stack: QUndoStack | None = None) -> None:
+        """Switch the scene to edit a different Floor. Pass the Floor's own
+        persistent QUndoStack (owned by MainWindow's QUndoGroup) so undo
+        history survives switching floors and back; omitting it starts a
+        fresh, throwaway stack."""
         self.clear()
         self._preview_line = None
-        self.project = project
-        self.undo_stack = QUndoStack(self)
-        for wall in project.walls:
+        self.floor = floor
+        self.undo_stack = undo_stack or QUndoStack(self)
+        self.detected_rooms = []
+        for wall in floor.walls:
             self.addItem(WallItem(wall, GRID_SNAP_MM))
-        for placed in project.items:
+        for placed in floor.items:
             self.addItem(FurnitureItem(placed, GRID_SNAP_MM))
-        for room_label in project.room_labels:
+        for room_label in floor.room_labels:
             self.addItem(RoomLabelItem(room_label))
 
     def add_room_label(self, pos: QPointF, text: str = "Room") -> RoomLabelItem:
         model = RoomLabel(id=next_id(), text=text, x=pos.x(), y=pos.y())
         gfx = RoomLabelItem(model)
-        self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.room_labels, "Add room label"))
+        self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.room_labels, "Add room label"))
         return gfx
 
     def add_furniture(self, item_type: str, label: str, width: float, height: float, color: str, pos: QPointF) -> FurnitureItem:
@@ -71,18 +78,18 @@ class DesignScene(QGraphicsScene):
             color=color,
         )
         gfx = FurnitureItem(model, GRID_SNAP_MM)
-        self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.items, "Add item"))
+        self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.items, "Add item"))
         return gfx
 
     def remove_selected(self) -> None:
         entries = []
         for gfx in list(self.selectedItems()):
             if isinstance(gfx, FurnitureItem):
-                entries.append((gfx.model, gfx, self.project.items))
+                entries.append((gfx.model, gfx, self.floor.items))
             elif isinstance(gfx, WallItem):
-                entries.append((gfx.model, gfx, self.project.walls))
+                entries.append((gfx.model, gfx, self.floor.walls))
             elif isinstance(gfx, RoomLabelItem):
-                entries.append((gfx.model, gfx, self.project.room_labels))
+                entries.append((gfx.model, gfx, self.floor.room_labels))
         if entries:
             self.undo_stack.push(DeleteItemsCommand(self, entries, "Delete"))
 
@@ -112,13 +119,13 @@ class DesignScene(QGraphicsScene):
                 data["y"] += offset
                 model = PlacedItem.from_dict(data)
                 gfx = FurnitureItem(model, GRID_SNAP_MM)
-                self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.items, "Paste item"))
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.items, "Paste item"))
             elif kind == "label":
                 data["x"] += offset
                 data["y"] += offset
                 model = RoomLabel.from_dict(data)
                 gfx = RoomLabelItem(model)
-                self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.room_labels, "Paste label"))
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.room_labels, "Paste label"))
             elif kind == "wall":
                 data["x1"] += offset
                 data["y1"] += offset
@@ -126,7 +133,7 @@ class DesignScene(QGraphicsScene):
                 data["y2"] += offset
                 model = Wall.from_dict(data)
                 gfx = WallItem(model, GRID_SNAP_MM)
-                self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.walls, "Paste wall"))
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.walls, "Paste wall"))
             else:
                 continue
             new_items.append(gfx)
@@ -138,6 +145,56 @@ class DesignScene(QGraphicsScene):
     def duplicate_selection(self) -> None:
         self.copy_selection()
         self.paste()
+
+    def paste_entries(self, entries: list[tuple[str, dict]], anchor: QPointF) -> list:
+        """Paste externally-supplied (kind, model-dict) entries (e.g. from a
+        template) centered on `anchor`. Returns the new graphics items."""
+        if not entries:
+            return []
+        xs, ys = [], []
+        for kind, data in entries:
+            if kind == "wall":
+                xs += [data["x1"], data["x2"]]
+                ys += [data["y1"], data["y2"]]
+            else:
+                xs.append(data["x"])
+                ys.append(data["y"])
+        cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+        dx, dy = anchor.x() - cx, anchor.y() - cy
+
+        self.undo_stack.beginMacro("Place Template")
+        new_items = []
+        for kind, data in entries:
+            data = dict(data)
+            data["id"] = next_id()
+            if kind == "item":
+                data["x"] += dx
+                data["y"] += dy
+                model = PlacedItem.from_dict(data)
+                gfx = FurnitureItem(model, GRID_SNAP_MM)
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.items, "Place template item"))
+            elif kind == "label":
+                data["x"] += dx
+                data["y"] += dy
+                model = RoomLabel.from_dict(data)
+                gfx = RoomLabelItem(model)
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.room_labels, "Place template label"))
+            elif kind == "wall":
+                data["x1"] += dx
+                data["y1"] += dy
+                data["x2"] += dx
+                data["y2"] += dy
+                model = Wall.from_dict(data)
+                gfx = WallItem(model, GRID_SNAP_MM)
+                self.undo_stack.push(AddItemCommand(self, model, gfx, self.floor.walls, "Place template wall"))
+            else:
+                continue
+            new_items.append(gfx)
+        self.undo_stack.endMacro()
+        self.clearSelection()
+        for gfx in new_items:
+            gfx.setSelected(True)
+        return new_items
 
     # -- keyboard nudge -------------------------------------------------------
     def _nudge_selected(self, dx: float, dy: float) -> None:
@@ -159,15 +216,44 @@ class DesignScene(QGraphicsScene):
                 self.undo_stack.push(ModifyModelCommand(gfx, before, after, "Nudge"))
         self.undo_stack.endMacro()
 
+    # -- room detection ---------------------------------------------------
+    def detect_rooms(self) -> int:
+        """Recompute enclosed-room polygons from the wall network and store
+        them for drawForeground() to render. Returns the number found."""
+        from app.room_detection import find_room_polygons
+
+        self.detected_rooms = find_room_polygons(self.floor.walls)
+        self.update()
+        return len(self.detected_rooms)
+
+    def clear_detected_rooms(self) -> None:
+        self.detected_rooms = []
+        self.update()
+
     # -- grid background ---------------------------------------------------
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
-        painter.fillRect(rect, QColor(self.project.background_color))
+        painter.fillRect(rect, QColor(self.floor.background_color))
         self._draw_grid(painter, rect, MINOR_GRID_MM, QColor("#e5e5e5"), 4)
         self._draw_grid(painter, rect, MAJOR_GRID_MM, QColor("#c9c9c9"), 8)
 
     def drawForeground(self, painter: QPainter, rect: QRectF) -> None:
-        """Fill the notch left where two wall segments' square-cut ends meet,
-        so corners read as one continuous wall instead of two butted boxes."""
+        """Draw detected-room overlays (if any), fill wall-corner joints so
+        segments read as one continuous wall, and draw active alignment
+        guides while an item is being dragged."""
+        if self.detected_rooms:
+            painter.setPen(QPen(QColor("#2b6cb0"), 8, Qt.PenStyle.DashDotLine))
+            painter.setBrush(QBrush(QColor(43, 108, 176, 40)))
+            font = painter.font()
+            font.setPointSizeF(220)
+            font.setBold(True)
+            painter.setFont(font)
+            for polygon, area_sq_mm in self.detected_rooms:
+                painter.drawPolygon(polygon)
+                centroid = polygon.boundingRect().center()
+                painter.setPen(QColor("#1a3a5c"))
+                painter.drawText(centroid, format_area(area_sq_mm))
+                painter.setPen(QPen(QColor("#2b6cb0"), 8, Qt.PenStyle.DashDotLine))
+
         joints: dict[tuple[float, float], list[float]] = {}
         for gfx in self.items():
             if not isinstance(gfx, WallItem):
@@ -235,7 +321,7 @@ class DesignScene(QGraphicsScene):
                 wall = Wall(id=next_id(), x1=self._pending_wall_start.x(), y1=self._pending_wall_start.y(),
                             x2=snapped.x(), y2=snapped.y())
                 wall_gfx = WallItem(wall, GRID_SNAP_MM)
-                self.undo_stack.push(AddItemCommand(self, wall, wall_gfx, self.project.walls, "Draw wall"))
+                self.undo_stack.push(AddItemCommand(self, wall, wall_gfx, self.floor.walls, "Draw wall"))
                 if self._preview_line is not None:
                     self.removeItem(self._preview_line)
                     self._preview_line = None

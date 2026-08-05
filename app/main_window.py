@@ -5,7 +5,18 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QRectF, QSettings, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QContextMenuEvent, QMouseEvent, QPainter, QPixmap, QWheelEvent
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QColor,
+    QContextMenuEvent,
+    QMouseEvent,
+    QPainter,
+    QPixmap,
+    QUndoGroup,
+    QUndoStack,
+    QWheelEvent,
+)
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -17,8 +28,11 @@ from PySide6.QtWidgets import (
     QGraphicsView,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -34,8 +48,9 @@ from app.io import load_project, save_project
 from app.items.furniture_item import FurnitureItem
 from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
-from app.models import Project
+from app.models import Floor, Project, next_id
 from app.scene import DesignScene
+from app.templates import TemplateLibrary
 from app.units import DisplayUnits, format_area, format_length
 
 CATALOG_PATH = Path(__file__).parent / "catalog.json"
@@ -181,6 +196,15 @@ class PropertyPanel(QWidget):
         self.color_button.clicked.connect(self._choose_color)
         form.addRow("Color", self.color_button)
 
+        self.curve_spin = QDoubleSpinBox()
+        self.curve_spin.setRange(-8000, 8000)
+        self.curve_spin.setSuffix(" mm")
+        self.curve_spin.valueChanged.connect(self._apply_curve)
+        form.addRow("Curve", self.curve_spin)
+        straighten_button = QPushButton("Straighten")
+        straighten_button.clicked.connect(lambda: self.curve_spin.setValue(0))
+        form.addRow("", straighten_button)
+
         layout.addWidget(self.group)
         layout.addStretch(1)
         self.group.setVisible(False)
@@ -196,6 +220,7 @@ class PropertyPanel(QWidget):
         self.label_edit.setEnabled(is_furniture or is_room_label)
         self.width_spin.setEnabled(is_furniture or isinstance(gfx, WallItem))
         self.height_spin.setEnabled(is_furniture or isinstance(gfx, WallItem))
+        self.curve_spin.setEnabled(isinstance(gfx, WallItem))
         if gfx is None:
             return
         self._updating = True
@@ -204,6 +229,7 @@ class PropertyPanel(QWidget):
             self.width_spin.setValue(gfx.model.width)
             self.height_spin.setValue(gfx.model.height)
             self.rotation_spin.setValue(gfx.model.rotation % 360)
+            self.curve_spin.setValue(0)
         elif isinstance(gfx, WallItem):
             import math
 
@@ -212,11 +238,13 @@ class PropertyPanel(QWidget):
             self.width_spin.setValue(length)
             self.height_spin.setValue(gfx.model.thickness)
             self.rotation_spin.setValue(0)
+            self.curve_spin.setValue(gfx.model.curve_offset)
         elif is_room_label:
             self.label_edit.setText(gfx.model.text)
             self.width_spin.setValue(0)
             self.height_spin.setValue(0)
             self.rotation_spin.setValue(0)
+            self.curve_spin.setValue(0)
         self._updating = False
 
     def refresh_values(self) -> None:
@@ -255,6 +283,13 @@ class PropertyPanel(QWidget):
             gfx.model.thickness = self.height_spin.value()
             gfx.update()
 
+    def _apply_curve(self) -> None:
+        if self._updating or not isinstance(self._current, WallItem):
+            return
+        self._current.prepareGeometryChange()
+        self._current.model.curve_offset = self.curve_spin.value()
+        self._current.update()
+
     def _apply_rotation(self) -> None:
         if self._updating or not isinstance(self._current, FurnitureItem):
             return
@@ -284,16 +319,43 @@ class MainWindow(QMainWindow):
 
         self.current_path: Path | None = None
         self.settings = QSettings("BlankOne", "LayoutDesigner")
-        self.scene = DesignScene(Project())
+        self.template_library = TemplateLibrary()
+
+        # One persistent QUndoStack per floor, all managed by a QUndoGroup so
+        # a single pair of Undo/Redo actions always tracks whichever floor is
+        # currently active -- switching floors (or New/Open) just changes
+        # which stack the group considers active, instead of creating a new
+        # stack and silently orphaning the old Undo/Redo actions.
+        self.undo_group = QUndoGroup(self)
+        self._undo_stacks: dict[int, QUndoStack] = {}
+
+        self.doc = Project()
+        self.scene = DesignScene(self.doc.floors[0], undo_stack=self._stack_for_floor(self.doc.floors[0]))
+        self.undo_group.setActiveStack(self.scene.undo_stack)
         self.view = DesignView(self.scene)
         self.setCentralWidget(self.view)
         self.scene.selectionChanged.connect(self._on_selection_changed)
         self.scene.changed.connect(lambda _regions: self.property_panel.refresh_values())
 
+        self.undo_action = self.undo_group.createUndoAction(self, "Undo")
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.redo_action = self.undo_group.createRedoAction(self, "Redo")
+        self.redo_action.setShortcut("Ctrl+Shift+Z")
+
         self._build_toolbar()
+        self._build_floor_bar()
         self._build_item_palette()
+        self._build_template_panel()
         self._build_property_panel()
         self._build_menu()
+
+    def _stack_for_floor(self, floor: Floor) -> QUndoStack:
+        stack = self._undo_stacks.get(floor.id)
+        if stack is None:
+            stack = QUndoStack(self.undo_group)
+            self.undo_group.addStack(stack)
+            self._undo_stacks[floor.id] = stack
+        return stack
 
     # -- UI construction ----------------------------------------------------
     def _build_toolbar(self) -> None:
@@ -326,12 +388,19 @@ class MainWindow(QMainWindow):
         toolbar.addAction(delete_action)
 
         toolbar.addSeparator()
-        self.undo_action = self.scene.undo_stack.createUndoAction(self, "Undo")
-        self.undo_action.setShortcut("Ctrl+Z")
-        self.redo_action = self.scene.undo_stack.createRedoAction(self, "Redo")
-        self.redo_action.setShortcut("Ctrl+Shift+Z")
         toolbar.addAction(self.undo_action)
         toolbar.addAction(self.redo_action)
+
+        toolbar.addSeparator()
+        self.detect_rooms_action = QAction("Detect Room Areas", self)
+        self.detect_rooms_action.setCheckable(True)
+        self.detect_rooms_action.triggered.connect(self._toggle_room_detection)
+        toolbar.addAction(self.detect_rooms_action)
+
+        toolbar.addSeparator()
+        preview_3d_action = QAction("3D Preview...", self)
+        preview_3d_action.triggered.connect(self._open_3d_preview)
+        toolbar.addAction(preview_3d_action)
 
         toolbar.addSeparator()
         toolbar.addWidget(QLabel(" Units: "))
@@ -361,6 +430,49 @@ class MainWindow(QMainWindow):
         self.duplicate_action.setShortcut("Ctrl+D")
         self.duplicate_action.triggered.connect(self.scene.duplicate_selection)
         self.addAction(self.duplicate_action)
+
+    def _build_floor_bar(self) -> None:
+        toolbar = QToolBar("Floors", self)
+        self.addToolBar(toolbar)
+        toolbar.addWidget(QLabel(" Floor: "))
+
+        self.floor_combo = QComboBox()
+        self.floor_combo.currentIndexChanged.connect(self._on_floor_combo_changed)
+        toolbar.addWidget(self.floor_combo)
+        self._refresh_floor_combo()
+
+        add_floor_action = QAction("Add Floor", self)
+        add_floor_action.triggered.connect(self._add_floor)
+        toolbar.addAction(add_floor_action)
+
+        rename_floor_action = QAction("Rename Floor", self)
+        rename_floor_action.triggered.connect(self._rename_floor)
+        toolbar.addAction(rename_floor_action)
+
+        self.delete_floor_action = QAction("Delete Floor", self)
+        self.delete_floor_action.triggered.connect(self._delete_floor)
+        toolbar.addAction(self.delete_floor_action)
+
+    def _build_template_panel(self) -> None:
+        self.template_list = QListWidget()
+        self._refresh_template_list()
+        self.template_list.itemDoubleClicked.connect(self._place_template)
+
+        save_button = QPushButton("Save Selection as Template...")
+        save_button.clicked.connect(self._save_selection_as_template)
+        delete_button = QPushButton("Delete Selected Template")
+        delete_button.clicked.connect(self._delete_template)
+
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.addWidget(QLabel("Double-click to place at view center:"))
+        layout.addWidget(self.template_list)
+        layout.addWidget(save_button)
+        layout.addWidget(delete_button)
+
+        dock = QDockWidget("Templates", self)
+        dock.setWidget(container)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
 
     def _build_item_palette(self) -> None:
         catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
@@ -458,10 +570,126 @@ class MainWindow(QMainWindow):
         self.scene.update()
 
     def _choose_background_color(self) -> None:
-        color = QColorDialog.getColor(QColor(self.scene.project.background_color), self, "Choose Background Color")
+        color = QColorDialog.getColor(QColor(self.scene.floor.background_color), self, "Choose Background Color")
         if color.isValid():
-            self.scene.project.background_color = color.name()
+            self.scene.floor.background_color = color.name()
             self.scene.update()
+
+    def _toggle_room_detection(self, checked: bool) -> None:
+        if checked:
+            count = self.scene.detect_rooms()
+            self.detect_rooms_action.setText(f"Room Areas ({count} found)")
+        else:
+            self.scene.clear_detected_rooms()
+            self.detect_rooms_action.setText("Detect Room Areas")
+
+    def _open_3d_preview(self) -> None:
+        from app.preview_3d import Preview3DDialog
+
+        dialog = Preview3DDialog(self.scene.floor, self)
+        dialog.exec()
+
+    # -- floors -----------------------------------------------------------
+    def _refresh_floor_combo(self) -> None:
+        self.floor_combo.blockSignals(True)
+        self.floor_combo.clear()
+        for floor in self.doc.floors:
+            self.floor_combo.addItem(floor.name)
+        self.floor_combo.setCurrentIndex(self.doc.active_floor_index)
+        self.floor_combo.blockSignals(False)
+        if hasattr(self, "delete_floor_action"):
+            self.delete_floor_action.setEnabled(len(self.doc.floors) > 1)
+
+    def _on_floor_combo_changed(self, index: int) -> None:
+        if index < 0 or index == self.doc.active_floor_index:
+            return
+        self._switch_to_floor(index)
+
+    def _switch_to_floor(self, index: int) -> None:
+        self.doc.active_floor_index = index
+        floor = self.doc.floors[index]
+        self.scene.rebuild_from_floor(floor, undo_stack=self._stack_for_floor(floor))
+        self.undo_group.setActiveStack(self.scene.undo_stack)
+        self.detect_rooms_action.setChecked(False)
+        self.detect_rooms_action.setText("Detect Room Areas")
+
+    def _add_floor(self) -> None:
+        name, ok = QInputDialog.getText(self, "Add Floor", "Floor name:", text=f"Floor {len(self.doc.floors) + 1}")
+        if not ok or not name.strip():
+            return
+        floor = Floor(id=next_id(), name=name.strip())
+        self.doc.floors.append(floor)
+        self._refresh_floor_combo()
+        self._switch_to_floor(len(self.doc.floors) - 1)
+        self.floor_combo.setCurrentIndex(self.doc.active_floor_index)
+
+    def _rename_floor(self) -> None:
+        floor = self.doc.floors[self.doc.active_floor_index]
+        name, ok = QInputDialog.getText(self, "Rename Floor", "Floor name:", text=floor.name)
+        if not ok or not name.strip():
+            return
+        floor.name = name.strip()
+        self._refresh_floor_combo()
+
+    def _delete_floor(self) -> None:
+        if len(self.doc.floors) <= 1:
+            return
+        index = self.doc.active_floor_index
+        floor = self.doc.floors[index]
+        reply = QMessageBox.question(
+            self, "Delete Floor", f'Delete "{floor.name}"? This cannot be undone.',
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        stack = self._undo_stacks.pop(floor.id, None)
+        if stack is not None:
+            self.undo_group.removeStack(stack)
+        del self.doc.floors[index]
+        self.doc.active_floor_index = max(0, index - 1)
+        self._refresh_floor_combo()
+        self._switch_to_floor(self.doc.active_floor_index)
+        self.floor_combo.setCurrentIndex(self.doc.active_floor_index)
+
+    # -- templates ----------------------------------------------------------
+    def _refresh_template_list(self) -> None:
+        self.template_list.clear()
+        for name in self.template_library.names():
+            self.template_list.addItem(QListWidgetItem(name))
+
+    def _save_selection_as_template(self) -> None:
+        selected = self.scene.selectedItems()
+        if not selected:
+            QMessageBox.information(self, "Save Template", "Select one or more items first.")
+            return
+        name, ok = QInputDialog.getText(self, "Save Selection as Template", "Template name:")
+        if not ok or not name.strip():
+            return
+        entries: list[tuple[str, dict]] = []
+        for gfx in selected:
+            if isinstance(gfx, FurnitureItem):
+                entries.append(("item", gfx.model.to_dict()))
+            elif isinstance(gfx, RoomLabelItem):
+                entries.append(("label", gfx.model.to_dict()))
+            elif isinstance(gfx, WallItem):
+                entries.append(("wall", gfx.model.to_dict()))
+        self.template_library.save_template(name.strip(), entries)
+        self._refresh_template_list()
+
+    def _place_template(self, list_item: QListWidgetItem) -> None:
+        entries = self.template_library.get(list_item.text())
+        if not entries:
+            return
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        self.scene.paste_entries(entries, center)
+        self._set_mode("select")
+
+    def _delete_template(self) -> None:
+        item = self.template_list.currentItem()
+        if item is None:
+            return
+        self.template_library.delete_template(item.text())
+        self._refresh_template_list()
 
     # -- recent files ---------------------------------------------------------
     def _recent_files(self) -> list[str]:
@@ -506,9 +734,23 @@ class MainWindow(QMainWindow):
         gfx.setSelected(True)
         self._set_mode("select")
 
+    def _load_document(self, project: Project) -> None:
+        for stack in self._undo_stacks.values():
+            self.undo_group.removeStack(stack)
+        self._undo_stacks.clear()
+        self.doc = project
+        floor = self.doc.floors[self.doc.active_floor_index]
+        self.scene.rebuild_from_floor(floor, undo_stack=self._stack_for_floor(floor))
+        self.undo_group.setActiveStack(self.scene.undo_stack)
+        if hasattr(self, "floor_combo"):
+            self._refresh_floor_combo()
+        if hasattr(self, "detect_rooms_action"):
+            self.detect_rooms_action.setChecked(False)
+            self.detect_rooms_action.setText("Detect Room Areas")
+
     def _new_project(self) -> None:
         self.current_path = None
-        self.scene.rebuild_from_project(Project())
+        self._load_document(Project())
 
     def _open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open Layout", "", "Layout Files (*.json)")
@@ -523,14 +765,14 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Open failed", str(exc))
             return
         self.current_path = Path(path)
-        self.scene.rebuild_from_project(project)
+        self._load_document(project)
         self._add_recent_file(path)
 
     def _save_project(self) -> None:
         if self.current_path is None:
             self._save_project_as()
             return
-        save_project(self.scene.project, self.current_path)
+        save_project(self.doc, self.current_path)
         self._add_recent_file(str(self.current_path))
 
     def _save_project_as(self) -> None:
@@ -538,7 +780,7 @@ class MainWindow(QMainWindow):
         if not path:
             return
         self.current_path = Path(path)
-        save_project(self.scene.project, self.current_path)
+        save_project(self.doc, self.current_path)
         self._add_recent_file(path)
 
     def _export_bounds(self):
@@ -602,8 +844,8 @@ class MainWindow(QMainWindow):
         painter.drawLine(int(x0 + bar_px), int(y - 6), int(x0 + bar_px), int(y + 6))
         painter.drawText(int(x0), int(y - 10), format_length(bar_mm))
 
-        item_count = len(self.scene.project.items)
-        total_area_sq_mm = sum(i.width * i.height for i in self.scene.project.items)
+        item_count = len(self.scene.floor.items)
+        total_area_sq_mm = sum(i.width * i.height for i in self.scene.floor.items)
         summary = f"{item_count} item{'s' if item_count != 1 else ''} | {format_area(total_area_sq_mm)} furniture footprint"
         metrics_rect = QRectF(target.left(), target.bottom() - margin - 20, target.width() - margin, 20)
         painter.drawText(metrics_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, summary)
