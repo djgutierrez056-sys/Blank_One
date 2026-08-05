@@ -7,7 +7,7 @@ out of sync.
 from __future__ import annotations
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen, QUndoStack
+from PySide6.QtGui import QBrush, QColor, QKeyEvent, QPainter, QPen, QUndoStack
 from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsScene, QGraphicsSceneMouseEvent
 
 from app.commands import AddItemCommand, DeleteItemsCommand
@@ -72,6 +72,25 @@ class DesignScene(QGraphicsScene):
         painter.fillRect(rect, QColor("#fafafa"))
         self._draw_grid(painter, rect, MINOR_GRID_MM, QColor("#e5e5e5"), 4)
         self._draw_grid(painter, rect, MAJOR_GRID_MM, QColor("#c9c9c9"), 8)
+
+    def drawForeground(self, painter: QPainter, rect: QRectF) -> None:
+        """Fill the notch left where two wall segments' square-cut ends meet,
+        so corners read as one continuous wall instead of two butted boxes."""
+        joints: dict[tuple[float, float], list[float]] = {}
+        for gfx in self.items():
+            if not isinstance(gfx, WallItem):
+                continue
+            for pt in (gfx.p1(), gfx.p2()):
+                key = (round(pt.x()), round(pt.y()))
+                joints.setdefault(key, []).append(gfx.model.thickness)
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QBrush(QColor("#5a5a5a")))
+        for (x, y), thicknesses in joints.items():
+            if len(thicknesses) < 2:
+                continue
+            radius = max(thicknesses) / 2 * 1.5
+            painter.drawEllipse(QPointF(x, y), radius, radius)
 
     @staticmethod
     def _draw_grid(painter: QPainter, rect: QRectF, step: float, color: QColor, width: int) -> None:
