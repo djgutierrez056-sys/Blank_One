@@ -1,0 +1,157 @@
+import { useRef } from 'react';
+import { usePlannerStore } from '../../state/store';
+import { exportProject, importProjectFile } from '../../utils/persistence';
+
+function Button({
+  onClick,
+  active,
+  disabled,
+  title,
+  children,
+}: {
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition ${
+        active ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-600 hover:bg-slate-100'
+      } ${disabled ? 'cursor-not-allowed opacity-40' : ''} border border-slate-200`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Divider() {
+  return <div className="mx-1 h-6 w-px bg-slate-200" />;
+}
+
+export function Toolbar() {
+  const tool = usePlannerStore((s) => s.tool);
+  const setTool = usePlannerStore((s) => s.setTool);
+  const undo = usePlannerStore((s) => s.undo);
+  const redo = usePlannerStore((s) => s.redo);
+  const past = usePlannerStore((s) => s.past);
+  const future = usePlannerStore((s) => s.future);
+  const copy = usePlannerStore((s) => s.copy);
+  const paste = usePlannerStore((s) => s.paste);
+  const duplicateSelected = usePlannerStore((s) => s.duplicateSelected);
+  const deleteSelected = usePlannerStore((s) => s.deleteSelected);
+  const rotateSelected = usePlannerStore((s) => s.rotateSelected);
+  const selectedIds = usePlannerStore((s) => s.selectedIds);
+  const project = usePlannerStore((s) => s.project);
+  const setProject = usePlannerStore((s) => s.setProject);
+  const newProject = usePlannerStore((s) => s.newProject);
+  const renameProject = usePlannerStore((s) => s.renameProject);
+  const setGridSnap = usePlannerStore((s) => s.setGridSnap);
+  const setShowLabels = usePlannerStore((s) => s.setShowLabels);
+  const clipboardLength = usePlannerStore((s) => s.clipboard.length);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasSelection = selectedIds.length > 0;
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const imported = await importProjectFile(file);
+      setProject(imported);
+    } catch {
+      alert('Could not read that file — is it a valid Room Planner JSON export?');
+    }
+    e.target.value = '';
+  }
+
+  return (
+    <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2">
+      <input
+        value={project.name}
+        onChange={(e) => renameProject(e.target.value)}
+        className="w-40 rounded border border-transparent px-2 py-1 text-sm font-semibold text-slate-800 hover:border-slate-200 focus:border-slate-300 focus:outline-none"
+      />
+      <Divider />
+
+      <Button title="Select tool (V)" active={tool === 'select'} onClick={() => setTool('select')}>
+        Select
+      </Button>
+      <Button title="Draw room (click-drag on canvas)" active={tool === 'draw-room'} onClick={() => setTool('draw-room')}>
+        + Room
+      </Button>
+      <Divider />
+
+      <Button title="Undo (Ctrl+Z)" onClick={undo} disabled={past.length === 0}>
+        Undo
+      </Button>
+      <Button title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={future.length === 0}>
+        Redo
+      </Button>
+      <Divider />
+
+      <Button title="Copy (Ctrl+C)" onClick={copy} disabled={!hasSelection}>
+        Copy
+      </Button>
+      <Button title="Paste (Ctrl+V)" onClick={paste} disabled={clipboardLength === 0}>
+        Paste
+      </Button>
+      <Button title="Duplicate (Ctrl+D)" onClick={duplicateSelected} disabled={!hasSelection}>
+        Duplicate
+      </Button>
+      <Button title="Rotate 15°" onClick={() => rotateSelected(15)} disabled={!hasSelection}>
+        Rotate ⟳
+      </Button>
+      <Button title="Delete (Del)" onClick={deleteSelected} disabled={!hasSelection}>
+        Delete
+      </Button>
+      <Divider />
+
+      <label className="flex items-center gap-1 text-xs text-slate-500">
+        <input
+          type="checkbox"
+          checked={project.showLabels}
+          onChange={(e) => setShowLabels(e.target.checked)}
+        />
+        Labels
+      </label>
+      <label className="flex items-center gap-1 text-xs text-slate-500">
+        Snap
+        <select
+          value={project.gridSnap}
+          onChange={(e) => setGridSnap(Number(e.target.value))}
+          className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+        >
+          <option value={0}>Off</option>
+          <option value={0.25}>3"</option>
+          <option value={0.5}>6"</option>
+          <option value={1}>1'</option>
+        </select>
+      </label>
+
+      <div className="flex-1" />
+
+      <Button
+        title="Start a new blank plan"
+        onClick={() => {
+          if (confirm('Start a new plan? Unsaved changes to the current plan will be lost (unless exported).')) {
+            newProject();
+          }
+        }}
+      >
+        New
+      </Button>
+      <Button title="Export plan as a JSON file" onClick={() => exportProject(project)}>
+        Export
+      </Button>
+      <Button title="Import a plan JSON file" onClick={() => fileInputRef.current?.click()}>
+        Import
+      </Button>
+      <input ref={fileInputRef} type="file" accept="application/json" className="hidden" onChange={handleImport} />
+    </div>
+  );
+}
