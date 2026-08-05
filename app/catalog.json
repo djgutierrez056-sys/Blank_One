@@ -1,0 +1,16 @@
+[
+  {"type": "bed", "label": "Bed", "category": "Bedroom", "width": 1500, "height": 2000, "color": "#a8d5ba"},
+  {"type": "dresser", "label": "Dresser", "category": "Bedroom", "width": 1000, "height": 500, "color": "#c9b79c"},
+  {"type": "nightstand", "label": "Nightstand", "category": "Bedroom", "width": 450, "height": 450, "color": "#c9b79c"},
+  {"type": "toilet", "label": "Toilet", "category": "Bathroom", "width": 400, "height": 700, "color": "#dfe7f5"},
+  {"type": "sink", "label": "Sink", "category": "Bathroom", "width": 550, "height": 450, "color": "#dfe7f5"},
+  {"type": "bathtub", "label": "Bathtub", "category": "Bathroom", "width": 1700, "height": 750, "color": "#dfe7f5"},
+  {"type": "washer", "label": "Washer", "category": "Laundry", "width": 600, "height": 600, "color": "#f5d6a8"},
+  {"type": "dryer", "label": "Dryer", "category": "Laundry", "width": 600, "height": 600, "color": "#f5d6a8"},
+  {"type": "fridge", "label": "Fridge", "category": "Kitchen", "width": 900, "height": 750, "color": "#f5b8b8"},
+  {"type": "stove", "label": "Stove", "category": "Kitchen", "width": 750, "height": 650, "color": "#f5b8b8"},
+  {"type": "table", "label": "Table", "category": "Kitchen", "width": 1200, "height": 800, "color": "#f5b8b8"},
+  {"type": "sofa", "label": "Sofa", "category": "Living Room", "width": 2000, "height": 900, "color": "#c9a8d5"},
+  {"type": "door", "label": "Door", "category": "Doors & Windows", "width": 900, "height": 150, "color": "#8a6b4d"},
+  {"type": "window", "label": "Window", "category": "Doors & Windows", "width": 1200, "height": 150, "color": "#7fb8d9"}
+]
