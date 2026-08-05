@@ -6,6 +6,7 @@ import { RoomShape } from './RoomShape';
 import { FurnitureShape } from './FurnitureShape';
 import { WallShape } from './WallShape';
 import { snapValue } from '../../utils/geometry';
+import { findPointSnap } from '../../utils/wallSnap';
 
 const WALL_THICKNESS = 6;
 
@@ -87,7 +88,8 @@ export function PlanCanvas() {
     if (tool === 'draw-wall') {
       const pos = stagePos();
       if (!pos) return;
-      const snapped = { x: snapValue(pos.x, gridSnapPx), y: snapValue(pos.y, gridSnapPx) };
+      const pointSnap = findPointSnap(project, pos.x, pos.y);
+      const snapped = pointSnap ?? { x: snapValue(pos.x, gridSnapPx), y: snapValue(pos.y, gridSnapPx) };
       setDrawStart(snapped);
       setWallEnd(snapped);
     }
@@ -114,7 +116,8 @@ export function PlanCanvas() {
     if (tool === 'draw-wall' && drawStart) {
       const pos = stagePos();
       if (!pos) return;
-      setWallEnd(pos);
+      const pointSnap = findPointSnap(project, pos.x, pos.y);
+      setWallEnd(pointSnap ?? pos);
     }
   }
 

@@ -117,6 +117,15 @@ export function PropertiesPanel() {
           onCommit={(v) => commit({ wallThickness: (v / 12) * scale })}
         />
       )}
+
+      {item && item.catalogId === 'door' && (
+        <button
+          onClick={() => updateEntity(item.id, { flipped: !item.flipped }, { commit: true })}
+          className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+        >
+          Flip swing ({item.flipped ? 'inward' : 'outward'})
+        </button>
+      )}
     </div>
   );
 }

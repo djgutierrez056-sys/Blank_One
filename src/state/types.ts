@@ -7,6 +7,8 @@ export interface Room {
   height: number;
   rotation: number;
   label: string;
+  labelX: number; // local, unrotated offset from the room's x/y
+  labelY: number;
   fill: string;
   wallThickness: number;
 }
@@ -22,6 +24,7 @@ export interface FurnitureItem {
   rotation: number;
   color: string;
   label: string;
+  flipped?: boolean; // for doors: which side of the wall it swings into
 }
 
 export interface Wall {

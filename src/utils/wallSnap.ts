@@ -55,7 +55,8 @@ export function findWallSnap(
   project: Project,
   centerX: number,
   centerY: number,
-  threshold = 24
+  threshold = 24,
+  excludeWallId?: string
 ): { x: number; y: number; angle: number } | null {
   let best: { dist: number; x: number; y: number; angle: number } | null = null;
 
@@ -71,6 +72,7 @@ export function findWallSnap(
   }
 
   for (const wall of project.walls) {
+    if (wall.id === excludeWallId) continue;
     const seg = wallSegment(wall);
     const cp = closestPointOnSegment(centerX, centerY, seg);
     const dist = Math.hypot(cp.x - centerX, cp.y - centerY);
@@ -84,6 +86,19 @@ export function findWallSnap(
     return { x: best.x, y: best.y, angle: best.angle };
   }
   return null;
+}
+
+/** Find the closest point on any room edge or wall segment to (px, py), ignoring
+ * alignment/angle — used to snap a plain point (e.g. a wall endpoint) in place. */
+export function findPointSnap(
+  project: Project,
+  px: number,
+  py: number,
+  threshold = 16,
+  excludeWallId?: string
+): { x: number; y: number } | null {
+  const snap = findWallSnap(project, px, py, threshold, excludeWallId);
+  return snap ? { x: snap.x, y: snap.y } : null;
 }
 
 /** Center point of a top-left-pivoted, rotated rectangle. */

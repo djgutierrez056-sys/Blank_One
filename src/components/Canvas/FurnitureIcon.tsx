@@ -13,9 +13,10 @@ interface Props {
   width: number;
   height: number;
   color: string;
+  flipped?: boolean;
 }
 
-export function FurnitureIcon({ catalogId, width, height, color }: Props) {
+export function FurnitureIcon({ catalogId, width, height, color, flipped }: Props) {
   const stroke = darken(color, 0.35);
   const base = (
     <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={3} />
@@ -172,18 +173,20 @@ export function FurnitureIcon({ catalogId, width, height, color }: Props) {
       return (
         <Group>
           <Line points={[0, height / 2, width, height / 2]} stroke={stroke} strokeWidth={height} />
-          <Line points={[0, height / 2, 0, height / 2 - width]} stroke={stroke} strokeWidth={1.5} />
-          <Arc
-            x={0}
-            y={height / 2}
-            innerRadius={width - 1}
-            outerRadius={width}
-            angle={90}
-            rotation={-90}
-            stroke={stroke}
-            strokeWidth={1}
-            fill="transparent"
-          />
+          <Group y={height / 2} scaleY={flipped ? -1 : 1}>
+            <Line points={[0, 0, 0, -width]} stroke={stroke} strokeWidth={1.5} />
+            <Arc
+              x={0}
+              y={0}
+              innerRadius={width - 1}
+              outerRadius={width}
+              angle={90}
+              rotation={-90}
+              stroke={stroke}
+              strokeWidth={1}
+              fill="transparent"
+            />
+          </Group>
         </Group>
       );
     case 'window':

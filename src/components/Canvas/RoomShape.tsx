@@ -70,7 +70,23 @@ export function RoomShape({ room, isSelected, gridSnapPx, showLabels, onSelect, 
         listening={false}
       />
       {showLabels && (
-        <KLabel x={room.width / 2} y={room.height / 2} listening={false}>
+        <KLabel
+          x={room.labelX}
+          y={room.labelY}
+          draggable={toolMode === 'select'}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            onSelect(room.id, e.evt.shiftKey);
+          }}
+          onDragStart={(e) => {
+            e.cancelBubble = true;
+            beginChange();
+          }}
+          onDragEnd={(e) => {
+            e.cancelBubble = true;
+            updateEntity(room.id, { labelX: e.target.x(), labelY: e.target.y() });
+          }}
+        >
           <Tag fill="rgba(255,255,255,0.75)" cornerRadius={4} />
           <Text
             text={room.label}

@@ -4,6 +4,7 @@ import { Group, Rect } from 'react-konva';
 import type { Wall } from '../../state/types';
 import { usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
+import { findPointSnap } from '../../utils/wallSnap';
 
 interface Props {
   wall: Wall;
@@ -17,6 +18,7 @@ interface Props {
 export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef, toolMode }: Props) {
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const beginChange = usePlannerStore((s) => s.beginChange);
+  const project = usePlannerStore((s) => s.project);
   const groupRef = useRef<Konva.Group>(null);
 
   return (
@@ -33,10 +35,27 @@ export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef,
       onTap={() => onSelect(wall.id, false)}
       onDragStart={() => beginChange()}
       onDragEnd={(e) => {
-        updateEntity(wall.id, {
-          x: snapValue(e.target.x(), gridSnapPx),
-          y: snapValue(e.target.y(), gridSnapPx),
-        });
+        const rawX = e.target.x();
+        const rawY = e.target.y();
+        const rad = (wall.rotation * Math.PI) / 180;
+        const rawEndX = rawX + wall.width * Math.cos(rad);
+        const rawEndY = rawY + wall.width * Math.sin(rad);
+
+        const startSnap = findPointSnap(project, rawX, rawY, 16, wall.id);
+        const endSnap = findPointSnap(project, rawEndX, rawEndY, 16, wall.id);
+
+        let newX = snapValue(rawX, gridSnapPx);
+        let newY = snapValue(rawY, gridSnapPx);
+
+        if (startSnap && (!endSnap || Math.hypot(startSnap.x - rawX, startSnap.y - rawY) <= Math.hypot(endSnap.x - rawEndX, endSnap.y - rawEndY))) {
+          newX = startSnap.x;
+          newY = startSnap.y;
+        } else if (endSnap) {
+          newX = rawX + (endSnap.x - rawEndX);
+          newY = rawY + (endSnap.y - rawEndY);
+        }
+
+        updateEntity(wall.id, { x: newX, y: newY });
       }}
       onTransformStart={() => beginChange()}
       onTransformEnd={() => {

@@ -97,8 +97,19 @@ function mapCollections(
   };
 }
 
-const initialProject = loadFromLocalStorage() ?? emptyProject();
-if (!initialProject.walls) initialProject.walls = [];
+function normalizeProject(project: Project): Project {
+  return {
+    ...project,
+    walls: project.walls ?? [],
+    rooms: project.rooms.map((r) => ({
+      ...r,
+      labelX: r.labelX ?? r.width / 2,
+      labelY: r.labelY ?? r.height / 2,
+    })),
+  };
+}
+
+const initialProject = normalizeProject(loadFromLocalStorage() ?? emptyProject());
 
 export const usePlannerStore = create<PlannerState>((set, get) => ({
   project: initialProject,
@@ -132,15 +143,19 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   addRoom: (partial) => {
     get().beginChange();
     const id = makeId('room');
+    const width = partial?.width ?? 200;
+    const height = partial?.height ?? 160;
     const room: Room = {
       id,
       kind: 'room',
       x: 100,
       y: 100,
-      width: 200,
-      height: 160,
+      width,
+      height,
       rotation: 0,
       label: 'Room',
+      labelX: width / 2,
+      labelY: height / 2,
       fill: '#eef2e6',
       wallThickness: 6,
       ...partial,
@@ -319,7 +334,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   setProject: (project) => {
-    set({ project: { ...project, walls: project.walls ?? [] }, past: [], future: [], selectedIds: [] });
+    set({ project: normalizeProject(project), past: [], future: [], selectedIds: [] });
     persist(get().project);
   },
 
