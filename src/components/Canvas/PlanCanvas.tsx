@@ -5,6 +5,7 @@ import { usePlannerStore } from '../../state/store';
 import { RoomShape } from './RoomShape';
 import { FurnitureShape } from './FurnitureShape';
 import { WallShape } from './WallShape';
+import { TextLabelShape } from './TextLabelShape';
 import { snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
 
@@ -22,6 +23,8 @@ export function PlanCanvas() {
   const toggleSelect = usePlannerStore((s) => s.toggleSelect);
   const addRoom = usePlannerStore((s) => s.addRoom);
   const addWall = usePlannerStore((s) => s.addWall);
+  const addText = usePlannerStore((s) => s.addText);
+  const updateEntity = usePlannerStore((s) => s.updateEntity);
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
   const setTool = usePlannerStore((s) => s.setTool);
   const setCanvasSize = usePlannerStore((s) => s.setCanvasSize);
@@ -35,6 +38,7 @@ export function PlanCanvas() {
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
   const [drawRect, setDrawRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wallEnd, setWallEnd] = useState<{ x: number; y: number } | null>(null);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
 
   const gridSnapPx = project.gridSnap * project.scale;
 
@@ -92,11 +96,23 @@ export function PlanCanvas() {
       const snapped = pointSnap ?? { x: snapValue(pos.x, gridSnapPx), y: snapValue(pos.y, gridSnapPx) };
       setDrawStart(snapped);
       setWallEnd(snapped);
+      return;
+    }
+    if (tool === 'place-text') {
+      const pos = stagePos();
+      if (!pos) return;
+      const id = addText(pos.x, pos.y);
+      select([id]);
+      setTool('select');
+      // Defer opening the inline editor until this click's mouseup/click
+      // cycle fully finishes — Konva can steal focus back on the same
+      // gesture, which would immediately blur (and close) the editor.
+      setTimeout(() => setEditingTextId(id), 0);
     }
   }
 
   function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
-    if (tool === 'select' && e.target === stageRef.current) {
+    if (tool === 'select' && e.target === stageRef.current && !editingTextId) {
       clearSelection();
     }
   }
@@ -170,6 +186,8 @@ export function PlanCanvas() {
     addItemFromCatalog(catalogId, x, y);
   }
 
+  const editingText = project.texts.find((t) => t.id === editingTextId) ?? null;
+
   const gridLines = [];
   const spacing = gridSnapPx > 0 ? gridSnapPx : project.scale;
   const cols = Math.ceil(size.width / spacing) + 1;
@@ -204,7 +222,7 @@ export function PlanCanvas() {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onClick={handleStageClick}
-        style={{ cursor: tool === 'draw-room' || tool === 'draw-wall' ? 'crosshair' : 'default' }}
+        style={{ cursor: tool === 'draw-room' || tool === 'draw-wall' || tool === 'place-text' ? 'crosshair' : 'default' }}
       >
         <Layer listening={false}>{gridLines}</Layer>
         <Layer>
@@ -243,6 +261,22 @@ export function PlanCanvas() {
               toolMode={tool}
             />
           ))}
+          {project.texts.map((textLabel) => (
+            <TextLabelShape
+              key={textLabel.id}
+              textLabel={textLabel}
+              isSelected={selectedIds.includes(textLabel.id)}
+              isEditing={editingTextId === textLabel.id}
+              gridSnapPx={gridSnapPx}
+              onSelect={(id, additive) => toggleSelect(id, additive)}
+              onEditRequest={(id) => {
+                select([id]);
+                setTimeout(() => setEditingTextId(id), 0);
+              }}
+              registerRef={registerRef}
+              toolMode={tool}
+            />
+          ))}
           {drawRect && (
             <Rect
               x={drawRect.x}
@@ -274,6 +308,40 @@ export function PlanCanvas() {
           />
         </Layer>
       </Stage>
+      {editingText && (
+        <textarea
+          autoFocus
+          defaultValue={editingText.text}
+          onFocus={(e) => e.target.select()}
+          onBlur={(e) => {
+            updateEntity(editingText.id, { text: e.target.value.trim() || 'Text' }, { commit: true });
+            setEditingTextId(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.blur();
+            } else if (e.key === 'Escape') {
+              setEditingTextId(null);
+            }
+          }}
+          style={{
+            position: 'absolute',
+            left: editingText.x,
+            top: editingText.y,
+            width: editingText.width,
+            fontSize: editingText.fontSize,
+            fontFamily: 'system-ui',
+            color: editingText.color,
+            border: '1px solid #4f7cff',
+            borderRadius: 4,
+            padding: 2,
+            background: 'white',
+            lineHeight: 1.3,
+            zIndex: 10,
+          }}
+        />
+      )}
     </div>
   );
 }

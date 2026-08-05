@@ -39,16 +39,31 @@ export interface Wall {
   label: string;
 }
 
-export type Entity = Room | FurnitureItem | Wall;
+export interface TextLabel {
+  id: string;
+  kind: 'text';
+  x: number;
+  y: number;
+  width: number; // wrap width; also used as the resize handle bounding box
+  height: number;
+  rotation: number;
+  text: string;
+  fontSize: number;
+  color: string;
+  label: string; // unused for text, kept so it satisfies the shared Entity fields
+}
+
+export type Entity = Room | FurnitureItem | Wall | TextLabel;
 
 export interface Project {
   name: string;
   rooms: Room[];
   items: FurnitureItem[];
   walls: Wall[];
+  texts: TextLabel[];
   scale: number; // px per foot
   gridSnap: number; // feet
   showLabels: boolean;
 }
 
-export type ToolMode = 'select' | 'draw-room' | 'draw-wall';
+export type ToolMode = 'select' | 'draw-room' | 'draw-wall' | 'place-text';

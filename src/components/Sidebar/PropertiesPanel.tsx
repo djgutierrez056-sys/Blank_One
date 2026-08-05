@@ -1,5 +1,5 @@
 import { usePlannerStore } from '../../state/store';
-import type { FurnitureItem, Room, Wall } from '../../state/types';
+import type { FurnitureItem, Room, TextLabel, Wall } from '../../state/types';
 
 function NumberField({
   label,
@@ -34,7 +34,8 @@ export function PropertiesPanel() {
   const room = project.rooms.find((r) => selectedIds.length === 1 && r.id === selectedIds[0]);
   const item = project.items.find((i) => selectedIds.length === 1 && i.id === selectedIds[0]);
   const wall = project.walls.find((w) => selectedIds.length === 1 && w.id === selectedIds[0]);
-  const entity = room ?? item ?? wall;
+  const text = project.texts.find((t) => selectedIds.length === 1 && t.id === selectedIds[0]);
+  const entity = room ?? item ?? wall ?? text;
 
   if (selectedIds.length === 0) {
     return (
@@ -53,10 +54,46 @@ export function PropertiesPanel() {
   }
 
   const scale = project.scale;
-  const commit = (changes: Partial<Room> & Partial<FurnitureItem> & Partial<Wall>) =>
+  const commit = (changes: Partial<Room> & Partial<FurnitureItem> & Partial<Wall> & Partial<TextLabel>) =>
     updateEntity(entity.id, changes, { commit: true });
 
-  const kindLabel = room ? 'Room' : wall ? 'Wall' : 'Furniture';
+  const kindLabel = room ? 'Room' : wall ? 'Wall' : text ? 'Text' : 'Furniture';
+
+  if (text) {
+    return (
+      <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
+        <h2 className="text-sm font-semibold text-slate-700">{kindLabel}</h2>
+
+        <label className="flex flex-col gap-1 text-xs text-slate-600">
+          Text
+          <textarea
+            value={text.text}
+            onChange={(e) => commit({ text: e.target.value })}
+            rows={3}
+            className="resize-none rounded border border-slate-300 px-2 py-1 text-xs"
+          />
+        </label>
+
+        <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3">
+          <NumberField label="X (ft)" value={text.x / scale} onCommit={(v) => commit({ x: v * scale })} />
+          <NumberField label="Y (ft)" value={text.y / scale} onCommit={(v) => commit({ y: v * scale })} />
+          <NumberField label="Width (ft)" value={text.width / scale} onCommit={(v) => commit({ width: Math.max(0.5, v) * scale })} />
+          <NumberField label="Font size" value={text.fontSize} step={1} onCommit={(v) => commit({ fontSize: Math.max(6, v) })} />
+          <NumberField label="Rotation" value={text.rotation} step={1} onCommit={(v) => commit({ rotation: v })} />
+        </div>
+
+        <label className="flex items-center justify-between text-xs text-slate-600">
+          Text Color
+          <input
+            type="color"
+            value={text.color}
+            onChange={(e) => commit({ color: e.target.value })}
+            className="h-7 w-14 cursor-pointer rounded border border-slate-300"
+          />
+        </label>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">

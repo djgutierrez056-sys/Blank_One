@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Entity, FurnitureItem, Project, Room, ToolMode, Wall } from './types';
+import type { Entity, FurnitureItem, Project, Room, TextLabel, ToolMode, Wall } from './types';
 import { getCatalogEntry } from '../data/catalog';
 import { loadFromLocalStorage, saveToLocalStorage } from '../utils/persistence';
 
@@ -16,6 +16,7 @@ export function emptyProject(): Project {
     rooms: [],
     items: [],
     walls: [],
+    texts: [],
     scale: 20, // px per foot
     gridSnap: 0.5, // feet
     showLabels: true,
@@ -27,7 +28,7 @@ interface HistoryState {
   future: Project[];
 }
 
-type EntityChanges = Partial<Room> & Partial<FurnitureItem> & Partial<Wall>;
+type EntityChanges = Partial<Room> & Partial<FurnitureItem> & Partial<Wall> & Partial<TextLabel>;
 
 interface PlannerState extends HistoryState {
   project: Project;
@@ -46,6 +47,7 @@ interface PlannerState extends HistoryState {
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
   addWall: (partial: Partial<Wall>) => string;
+  addText: (x: number, y: number) => string;
   addItemFromCatalog: (catalogId: string, x: number, y: number) => string;
   updateEntity: (id: string, changes: EntityChanges, opts?: { commit?: boolean }) => void;
   deleteSelected: () => void;
@@ -72,6 +74,7 @@ function cloneProject(p: Project): Project {
     rooms: p.rooms.map((r) => ({ ...r })),
     items: p.items.map((i) => ({ ...i })),
     walls: p.walls.map((w) => ({ ...w })),
+    texts: p.texts.map((t) => ({ ...t })),
   };
 }
 
@@ -81,6 +84,7 @@ function findEntities(project: Project, ids: string[]): Entity[] {
     ...project.rooms.filter((r) => idSet.has(r.id)),
     ...project.items.filter((i) => idSet.has(i.id)),
     ...project.walls.filter((w) => idSet.has(w.id)),
+    ...project.texts.filter((t) => idSet.has(t.id)),
   ];
 }
 
@@ -94,6 +98,7 @@ function mapCollections(
     rooms: project.rooms.map((r) => (idSet.has(r.id) ? transform(r) : r)),
     items: project.items.map((i) => (idSet.has(i.id) ? transform(i) : i)),
     walls: project.walls.map((w) => (idSet.has(w.id) ? transform(w) : w)),
+    texts: project.texts.map((t) => (idSet.has(t.id) ? transform(t) : t)),
   };
 }
 
@@ -101,6 +106,7 @@ function normalizeProject(project: Project): Project {
   return {
     ...project,
     walls: project.walls ?? [],
+    texts: project.texts ?? [],
     rooms: project.rooms.map((r) => ({
       ...r,
       labelX: r.labelX ?? r.width / 2,
@@ -191,6 +197,30 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     return id;
   },
 
+  addText: (x, y) => {
+    get().beginChange();
+    const id = makeId('text');
+    const text: TextLabel = {
+      id,
+      kind: 'text',
+      x,
+      y,
+      width: 160,
+      height: 28,
+      rotation: 0,
+      text: 'Text',
+      fontSize: 16,
+      color: '#1f2430',
+      label: 'Text',
+    };
+    set((s) => ({
+      project: { ...s.project, texts: [...s.project.texts, text] },
+      selectedIds: [id],
+    }));
+    persist(get().project);
+    return id;
+  },
+
   addItemFromCatalog: (catalogId, x, y) => {
     const entry = getCatalogEntry(catalogId);
     if (!entry) return '';
@@ -239,6 +269,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         rooms: s.project.rooms.filter((r) => !idSet.has(r.id)),
         items: s.project.items.filter((i) => !idSet.has(i.id)),
         walls: s.project.walls.filter((w) => !idSet.has(w.id)),
+        texts: s.project.texts.filter((t) => !idSet.has(t.id)),
       },
       selectedIds: [],
     }));
@@ -259,13 +290,15 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       const newRooms: Room[] = [];
       const newItems: FurnitureItem[] = [];
       const newWalls: Wall[] = [];
+      const newTexts: TextLabel[] = [];
       for (const e of clipboard) {
         const id = makeId(e.kind);
         newIds.push(id);
         const offsetEntity = { ...e, id, x: e.x + PASTE_OFFSET, y: e.y + PASTE_OFFSET };
         if (e.kind === 'room') newRooms.push(offsetEntity as Room);
         else if (e.kind === 'item') newItems.push(offsetEntity as FurnitureItem);
-        else newWalls.push(offsetEntity as Wall);
+        else if (e.kind === 'wall') newWalls.push(offsetEntity as Wall);
+        else newTexts.push(offsetEntity as TextLabel);
       }
       return {
         project: {
@@ -273,6 +306,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
           rooms: [...s.project.rooms, ...newRooms],
           items: [...s.project.items, ...newItems],
           walls: [...s.project.walls, ...newWalls],
+          texts: [...s.project.texts, ...newTexts],
         },
         selectedIds: newIds,
       };
