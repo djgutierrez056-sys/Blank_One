@@ -159,7 +159,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       width,
       height,
       rotation: 0,
-      label: 'Room',
+      label: '',
       labelX: width / 2,
       labelY: height / 2,
       fill: '#eef2e6',

@@ -145,7 +145,6 @@ export function PlanCanvas() {
           y: snapValue(drawRect.y, gridSnapPx),
           width: snapValue(drawRect.w, gridSnapPx),
           height: snapValue(drawRect.h, gridSnapPx),
-          label: 'Room',
         });
         select([id]);
       }

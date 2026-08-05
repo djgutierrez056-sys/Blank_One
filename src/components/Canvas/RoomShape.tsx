@@ -69,7 +69,7 @@ export function RoomShape({ room, isSelected, gridSnapPx, showLabels, onSelect, 
         fillEnabled={false}
         listening={false}
       />
-      {showLabels && (
+      {showLabels && room.label && (
         <KLabel
           x={room.labelX}
           y={room.labelY}
