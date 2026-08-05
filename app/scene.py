@@ -7,9 +7,10 @@ out of sync.
 from __future__ import annotations
 
 from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPen, QUndoStack
 from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsScene, QGraphicsSceneMouseEvent
 
+from app.commands import AddItemCommand, DeleteItemsCommand
 from app.items.furniture_item import FurnitureItem
 from app.items.wall_item import WallItem
 from app.models import PlacedItem, Project, Wall, next_id
@@ -27,6 +28,7 @@ class DesignScene(QGraphicsScene):
         self.mode = "select"  # "select" | "draw_wall"
         self._pending_wall_start: QPointF | None = None
         self._preview_line: QGraphicsLineItem | None = None
+        self.undo_stack = QUndoStack(self)
         self.rebuild_from_project(self.project)
 
     # -- project sync -----------------------------------------------------
@@ -34,6 +36,7 @@ class DesignScene(QGraphicsScene):
         self.clear()
         self._preview_line = None
         self.project = project
+        self.undo_stack = QUndoStack(self)
         for wall in project.walls:
             self.addItem(WallItem(wall, GRID_SNAP_MM))
         for placed in project.items:
@@ -50,18 +53,19 @@ class DesignScene(QGraphicsScene):
             height=height,
             color=color,
         )
-        self.project.items.append(model)
         gfx = FurnitureItem(model, GRID_SNAP_MM)
-        self.addItem(gfx)
+        self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.items, "Add item"))
         return gfx
 
     def remove_selected(self) -> None:
+        entries = []
         for gfx in list(self.selectedItems()):
             if isinstance(gfx, FurnitureItem):
-                self.project.items = [i for i in self.project.items if i is not gfx.model]
+                entries.append((gfx.model, gfx, self.project.items))
             elif isinstance(gfx, WallItem):
-                self.project.walls = [w for w in self.project.walls if w is not gfx.model]
-            self.removeItem(gfx)
+                entries.append((gfx.model, gfx, self.project.walls))
+        if entries:
+            self.undo_stack.push(DeleteItemsCommand(self, entries, "Delete"))
 
     # -- grid background ---------------------------------------------------
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
@@ -112,8 +116,8 @@ class DesignScene(QGraphicsScene):
             else:
                 wall = Wall(id=next_id(), x1=self._pending_wall_start.x(), y1=self._pending_wall_start.y(),
                             x2=snapped.x(), y2=snapped.y())
-                self.project.walls.append(wall)
-                self.addItem(WallItem(wall, GRID_SNAP_MM))
+                wall_gfx = WallItem(wall, GRID_SNAP_MM)
+                self.undo_stack.push(AddItemCommand(self, wall, wall_gfx, self.project.walls, "Draw wall"))
                 if self._preview_line is not None:
                     self.removeItem(self._preview_line)
                     self._preview_line = None

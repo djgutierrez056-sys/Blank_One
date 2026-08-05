@@ -1,27 +1,40 @@
-"""Main application window: menu/toolbar, item palette, and the design canvas."""
+"""Main application window: menu/toolbar, item palette, property panel, canvas."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QPainter, QWheelEvent
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QAction, QActionGroup, QColor, QPainter, QPixmap, QWheelEvent
+from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
+    QColorDialog,
+    QComboBox,
     QDockWidget,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGraphicsView,
-    QListWidget,
-    QListWidgetItem,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QToolBar,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from app.io import load_project, save_project
+from app.items.furniture_item import FurnitureItem
+from app.items.wall_item import WallItem
 from app.models import Project
 from app.scene import DesignScene
+from app.units import DisplayUnits
 
 CATALOG_PATH = Path(__file__).parent / "catalog.json"
 
@@ -40,19 +53,157 @@ class DesignView(QGraphicsView):
         self.scale(factor, factor)
 
 
+class PropertyPanel(QWidget):
+    """Shows/edits the selected item's label, size, rotation, and color."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._current: FurnitureItem | WallItem | None = None
+        self._updating = False
+
+        layout = QVBoxLayout(self)
+        self.empty_label = QLabel("Select an item to edit its properties.")
+        self.empty_label.setWordWrap(True)
+        layout.addWidget(self.empty_label)
+
+        self.group = QGroupBox("Selected Item")
+        form = QFormLayout(self.group)
+
+        self.label_edit = QLineEdit()
+        self.label_edit.editingFinished.connect(self._apply_label)
+        form.addRow("Label", self.label_edit)
+
+        self.width_spin = QDoubleSpinBox()
+        self.width_spin.setRange(50, 20000)
+        self.width_spin.setSuffix(" mm")
+        self.width_spin.valueChanged.connect(self._apply_size)
+        form.addRow("Width", self.width_spin)
+
+        self.height_spin = QDoubleSpinBox()
+        self.height_spin.setRange(50, 20000)
+        self.height_spin.setSuffix(" mm")
+        self.height_spin.valueChanged.connect(self._apply_size)
+        form.addRow("Height", self.height_spin)
+
+        self.rotation_spin = QDoubleSpinBox()
+        self.rotation_spin.setRange(0, 359.9)
+        self.rotation_spin.setSuffix(" deg")
+        self.rotation_spin.valueChanged.connect(self._apply_rotation)
+        form.addRow("Rotation", self.rotation_spin)
+
+        rotate_row = QWidget()
+        rotate_layout = QHBoxLayout(rotate_row)
+        rotate_layout.setContentsMargins(0, 0, 0, 0)
+        rotate_left = QPushButton("Rotate -90°")
+        rotate_left.clicked.connect(lambda: self._rotate_step(-90))
+        rotate_right = QPushButton("Rotate +90°")
+        rotate_right.clicked.connect(lambda: self._rotate_step(90))
+        rotate_layout.addWidget(rotate_left)
+        rotate_layout.addWidget(rotate_right)
+        form.addRow(rotate_row)
+
+        self.color_button = QPushButton("Choose Color")
+        self.color_button.clicked.connect(self._choose_color)
+        form.addRow("Color", self.color_button)
+
+        layout.addWidget(self.group)
+        layout.addStretch(1)
+        self.group.setVisible(False)
+
+    def set_selection(self, gfx) -> None:
+        self._current = gfx
+        is_furniture = isinstance(gfx, FurnitureItem)
+        self.group.setVisible(gfx is not None)
+        self.empty_label.setVisible(gfx is None)
+        self.rotation_spin.setEnabled(is_furniture)
+        self.color_button.setEnabled(is_furniture)
+        self.label_edit.setEnabled(is_furniture)
+        if gfx is None:
+            return
+        self._updating = True
+        if is_furniture:
+            self.label_edit.setText(gfx.model.label)
+            self.width_spin.setValue(gfx.model.width)
+            self.height_spin.setValue(gfx.model.height)
+            self.rotation_spin.setValue(gfx.model.rotation % 360)
+        elif isinstance(gfx, WallItem):
+            import math
+
+            self.label_edit.setText("Wall")
+            length = math.hypot(gfx.model.x2 - gfx.model.x1, gfx.model.y2 - gfx.model.y1)
+            self.width_spin.setValue(length)
+            self.height_spin.setValue(gfx.model.thickness)
+            self.rotation_spin.setValue(0)
+        self._updating = False
+
+    def refresh_values(self) -> None:
+        if self._current is None or self._updating:
+            return
+        self.set_selection(self._current)
+
+    def _apply_label(self) -> None:
+        if self._updating or not isinstance(self._current, FurnitureItem):
+            return
+        self._current.model.label = self.label_edit.text()
+        self._current.update()
+
+    def _apply_size(self) -> None:
+        if self._updating or self._current is None:
+            return
+        gfx = self._current
+        if isinstance(gfx, FurnitureItem):
+            gfx.prepareGeometryChange()
+            gfx.model.width = self.width_spin.value()
+            gfx.model.height = self.height_spin.value()
+            gfx.update()
+        elif isinstance(gfx, WallItem):
+            import math
+
+            angle = math.atan2(gfx.model.y2 - gfx.model.y1, gfx.model.x2 - gfx.model.x1)
+            gfx.prepareGeometryChange()
+            new_length = self.width_spin.value()
+            gfx.model.x2 = gfx.model.x1 + new_length * math.cos(angle)
+            gfx.model.y2 = gfx.model.y1 + new_length * math.sin(angle)
+            gfx.model.thickness = self.height_spin.value()
+            gfx.update()
+
+    def _apply_rotation(self) -> None:
+        if self._updating or not isinstance(self._current, FurnitureItem):
+            return
+        self._current.setRotation(self.rotation_spin.value())
+        self._current.model.rotation = self.rotation_spin.value()
+        self._current.update()
+
+    def _rotate_step(self, degrees: float) -> None:
+        if isinstance(self._current, FurnitureItem):
+            self._current.rotate_by(degrees)
+            self.refresh_values()
+
+    def _choose_color(self) -> None:
+        if not isinstance(self._current, FurnitureItem):
+            return
+        color = QColorDialog.getColor(QColor(self._current.model.color), self, "Choose Color")
+        if color.isValid():
+            self._current.model.color = color.name()
+            self._current.update()
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Yard & Home Layout Designer")
-        self.resize(1200, 800)
+        self.resize(1300, 850)
 
         self.current_path: Path | None = None
         self.scene = DesignScene(Project())
         self.view = DesignView(self.scene)
         self.setCentralWidget(self.view)
+        self.scene.selectionChanged.connect(self._on_selection_changed)
+        self.scene.changed.connect(lambda _regions: self.property_panel.refresh_values())
 
         self._build_toolbar()
         self._build_item_palette()
+        self._build_property_panel()
         self._build_menu()
 
     # -- UI construction ----------------------------------------------------
@@ -60,6 +211,7 @@ class MainWindow(QMainWindow):
         toolbar = QToolBar("Tools", self)
         self.addToolBar(toolbar)
 
+        mode_group = QActionGroup(self)
         select_action = QAction("Select", self)
         select_action.setCheckable(True)
         select_action.setChecked(True)
@@ -69,9 +221,10 @@ class MainWindow(QMainWindow):
         wall_action.setCheckable(True)
         wall_action.triggered.connect(lambda: self._set_mode("draw_wall"))
 
+        for action in (select_action, wall_action):
+            mode_group.addAction(action)
+            toolbar.addAction(action)
         self._mode_actions = {"select": select_action, "draw_wall": wall_action}
-        toolbar.addAction(select_action)
-        toolbar.addAction(wall_action)
 
         toolbar.addSeparator()
         delete_action = QAction("Delete Selected", self)
@@ -79,23 +232,54 @@ class MainWindow(QMainWindow):
         delete_action.triggered.connect(self.scene.remove_selected)
         toolbar.addAction(delete_action)
 
+        toolbar.addSeparator()
+        self.undo_action = self.scene.undo_stack.createUndoAction(self, "Undo")
+        self.undo_action.setShortcut("Ctrl+Z")
+        self.redo_action = self.scene.undo_stack.createRedoAction(self, "Redo")
+        self.redo_action.setShortcut("Ctrl+Shift+Z")
+        toolbar.addAction(self.undo_action)
+        toolbar.addAction(self.redo_action)
+
+        toolbar.addSeparator()
+        toolbar.addWidget(QLabel(" Units: "))
+        unit_combo = QComboBox()
+        unit_combo.addItems(["Metric", "Feet/Inches"])
+        unit_combo.currentIndexChanged.connect(self._on_unit_changed)
+        toolbar.addWidget(unit_combo)
+
     def _build_item_palette(self) -> None:
         catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
-        self.palette_list = QListWidget()
+        categories: dict[str, list[dict]] = {}
         for entry in catalog:
-            text = f"{entry['label']}  ({entry['category']})"
-            list_item = QListWidgetItem(text)
-            list_item.setData(Qt.ItemDataRole.UserRole, entry)
-            self.palette_list.addItem(list_item)
-        self.palette_list.itemDoubleClicked.connect(self._on_palette_item_chosen)
+            categories.setdefault(entry["category"], []).append(entry)
+
+        self.palette_tree = QTreeWidget()
+        self.palette_tree.setHeaderHidden(True)
+        for category, entries in categories.items():
+            cat_item = QTreeWidgetItem([category])
+            cat_item.setFlags(cat_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            for entry in entries:
+                child = QTreeWidgetItem([entry["label"]])
+                child.setData(0, Qt.ItemDataRole.UserRole, entry)
+                cat_item.addChild(child)
+            self.palette_tree.addTopLevelItem(cat_item)
+        self.palette_tree.expandAll()
+        self.palette_tree.itemDoubleClicked.connect(self._on_palette_item_chosen)
 
         container = QWidget()
         layout = QVBoxLayout(container)
-        layout.addWidget(self.palette_list)
+        layout.addWidget(QLabel("Double-click to place at view center:"))
+        layout.addWidget(self.palette_tree)
 
-        dock = QDockWidget("Item Library (double-click to place)", self)
+        dock = QDockWidget("Item Library", self)
         dock.setWidget(container)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+
+    def _build_property_panel(self) -> None:
+        self.property_panel = PropertyPanel()
+        dock = QDockWidget("Properties", self)
+        dock.setWidget(self.property_panel)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -118,6 +302,19 @@ class MainWindow(QMainWindow):
         save_as_action.triggered.connect(self._save_project_as)
         file_menu.addAction(save_as_action)
 
+        file_menu.addSeparator()
+        export_png_action = QAction("Export PNG...", self)
+        export_png_action.triggered.connect(self._export_png)
+        file_menu.addAction(export_png_action)
+
+        export_pdf_action = QAction("Export PDF...", self)
+        export_pdf_action.triggered.connect(self._export_pdf)
+        file_menu.addAction(export_pdf_action)
+
+        edit_menu = self.menuBar().addMenu("&Edit")
+        edit_menu.addAction(self.undo_action)
+        edit_menu.addAction(self.redo_action)
+
     # -- actions --------------------------------------------------------------
     def _set_mode(self, mode: str) -> None:
         self.scene.set_mode(mode)
@@ -127,8 +324,18 @@ class MainWindow(QMainWindow):
             QGraphicsView.DragMode.NoDrag if mode == "draw_wall" else QGraphicsView.DragMode.RubberBandDrag
         )
 
-    def _on_palette_item_chosen(self, list_item: QListWidgetItem) -> None:
-        entry = list_item.data(Qt.ItemDataRole.UserRole)
+    def _on_selection_changed(self) -> None:
+        selected = self.scene.selectedItems()
+        self.property_panel.set_selection(selected[0] if len(selected) == 1 else None)
+
+    def _on_unit_changed(self, index: int) -> None:
+        DisplayUnits.current = "metric" if index == 0 else "imperial"
+        self.scene.update()
+
+    def _on_palette_item_chosen(self, tree_item: QTreeWidgetItem, _column: int) -> None:
+        entry = tree_item.data(0, Qt.ItemDataRole.UserRole)
+        if entry is None:
+            return  # a category header, not a placeable item
         center = self.view.mapToScene(self.view.viewport().rect().center())
         self.scene.add_furniture(
             item_type=entry["type"],
@@ -168,3 +375,37 @@ class MainWindow(QMainWindow):
             return
         self.current_path = Path(path)
         save_project(self.scene.project, self.current_path)
+
+    def _export_bounds(self):
+        bounds = self.scene.itemsBoundingRect()
+        if bounds.isEmpty():
+            bounds = self.view.sceneRect()
+        margin = 300
+        bounds.adjust(-margin, -margin, margin, margin)
+        return bounds
+
+    def _export_png(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Export PNG", "layout.png", "PNG Files (*.png)")
+        if not path:
+            return
+        bounds = self._export_bounds()
+        scale = 0.3  # px per mm
+        image = QPixmap(max(1, int(bounds.width() * scale)), max(1, int(bounds.height() * scale)))
+        image.fill(Qt.GlobalColor.white)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.scene.render(painter, image.rect().toRectF(), bounds)
+        painter.end()
+        image.save(path)
+
+    def _export_pdf(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(self, "Export PDF", "layout.pdf", "PDF Files (*.pdf)")
+        if not path:
+            return
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(path)
+        painter = QPainter(printer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.scene.render(painter, QRectF(printer.pageRect(QPrinter.Unit.DevicePixel)), self._export_bounds())
+        painter.end()

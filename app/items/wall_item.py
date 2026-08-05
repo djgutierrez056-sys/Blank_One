@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.models import Wall
+from app.units import format_length
 
 HANDLE_RADIUS = 90.0  # mm
 
@@ -46,7 +47,15 @@ class WallItem(QGraphicsItem):
         self._drag_start_mouse = QPointF()
         self._drag_start_p1 = QPointF()
         self._drag_start_p2 = QPointF()
+        self._before_snapshot: dict | None = None
         self.setZValue(5)
+
+    def sync_from_model(self) -> None:
+        self.prepareGeometryChange()
+        self.update()
+
+    def _snapshot(self) -> dict:
+        return {"x1": self.model.x1, "y1": self.model.y1, "x2": self.model.x2, "y2": self.model.y2}
 
     def p1(self) -> QPointF:
         return QPointF(self.model.x1, self.model.y1)
@@ -83,6 +92,20 @@ class WallItem(QGraphicsItem):
         painter.setPen(QPen(QColor("#333333"), 8))
         painter.drawPolygon(self._thick_polygon())
 
+        p1, p2 = self.p1(), self.p2()
+        length = math.hypot(p2.x() - p1.x(), p2.y() - p1.y())
+        mid = QPointF((p1.x() + p2.x()) / 2, (p1.y() + p2.y()) / 2)
+        angle = math.degrees(math.atan2(p2.y() - p1.y(), p2.x() - p1.x()))
+        painter.save()
+        painter.translate(mid)
+        if 90 < angle % 360 < 270:
+            angle += 180
+        painter.rotate(angle)
+        painter.setPen(QPen(QColor("#222222")))
+        text_rect = QRectF(-400, -self.model.thickness / 2 - 220, 800, 200)
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, format_length(length))
+        painter.restore()
+
         if self.isSelected():
             painter.setPen(QPen(QColor("#2b6cb0"), 6, Qt.PenStyle.DashLine))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -108,6 +131,7 @@ class WallItem(QGraphicsItem):
         if mode == DragMode.NONE:
             event.ignore()
             return
+        self._before_snapshot = self._snapshot()
         self._drag_mode = mode
         self._drag_start_mouse = event.scenePos()
         self._drag_start_p1 = self.p1()
@@ -138,3 +162,10 @@ class WallItem(QGraphicsItem):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         self._drag_mode = DragMode.NONE
+        if self._before_snapshot is not None:
+            after = self._snapshot()
+            if after != self._before_snapshot and self.scene() is not None:
+                from app.commands import ModifyModelCommand
+
+                self.scene().undo_stack.push(ModifyModelCommand(self, self._before_snapshot, after, "Modify wall"))
+            self._before_snapshot = None
