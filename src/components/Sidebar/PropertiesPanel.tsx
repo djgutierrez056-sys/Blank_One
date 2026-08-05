@@ -1,5 +1,5 @@
 import { usePlannerStore } from '../../state/store';
-import type { FurnitureItem, Room } from '../../state/types';
+import type { FurnitureItem, Room, Wall } from '../../state/types';
 
 function NumberField({
   label,
@@ -33,7 +33,8 @@ export function PropertiesPanel() {
 
   const room = project.rooms.find((r) => selectedIds.length === 1 && r.id === selectedIds[0]);
   const item = project.items.find((i) => selectedIds.length === 1 && i.id === selectedIds[0]);
-  const entity = room ?? item;
+  const wall = project.walls.find((w) => selectedIds.length === 1 && w.id === selectedIds[0]);
+  const entity = room ?? item ?? wall;
 
   if (selectedIds.length === 0) {
     return (
@@ -52,11 +53,14 @@ export function PropertiesPanel() {
   }
 
   const scale = project.scale;
-  const commit = (changes: Partial<Room> & Partial<FurnitureItem>) => updateEntity(entity.id, changes, { commit: true });
+  const commit = (changes: Partial<Room> & Partial<FurnitureItem> & Partial<Wall>) =>
+    updateEntity(entity.id, changes, { commit: true });
+
+  const kindLabel = room ? 'Room' : wall ? 'Wall' : 'Furniture';
 
   return (
     <div className="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-l border-slate-200 bg-slate-50 p-4">
-      <h2 className="text-sm font-semibold text-slate-700">{room ? 'Room' : 'Furniture'}</h2>
+      <h2 className="text-sm font-semibold text-slate-700">{kindLabel}</h2>
 
       <label className="flex flex-col gap-1 text-xs text-slate-600">
         Label
@@ -71,20 +75,35 @@ export function PropertiesPanel() {
       <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3">
         <NumberField label="X (ft)" value={entity.x / scale} onCommit={(v) => commit({ x: v * scale })} />
         <NumberField label="Y (ft)" value={entity.y / scale} onCommit={(v) => commit({ y: v * scale })} />
-        <NumberField label="Width (ft)" value={entity.width / scale} onCommit={(v) => commit({ width: Math.max(0.2, v) * scale })} />
-        <NumberField label="Height (ft)" value={entity.height / scale} onCommit={(v) => commit({ height: Math.max(0.2, v) * scale })} />
+        <NumberField
+          label={wall ? 'Length (ft)' : 'Width (ft)'}
+          value={entity.width / scale}
+          onCommit={(v) => commit({ width: Math.max(0.2, v) * scale })}
+        />
+        {wall ? (
+          <NumberField
+            label="Thickness (in)"
+            value={(wall.height * 12) / scale}
+            step={0.5}
+            onCommit={(v) => commit({ height: Math.max(1, (v / 12) * scale) })}
+          />
+        ) : (
+          <NumberField label="Height (ft)" value={entity.height / scale} onCommit={(v) => commit({ height: Math.max(0.2, v) * scale })} />
+        )}
         <NumberField label="Rotation" value={entity.rotation} step={1} onCommit={(v) => commit({ rotation: v })} />
       </div>
 
       <label className="flex items-center justify-between text-xs text-slate-600">
-        {room ? 'Fill Color' : 'Color'}
+        {room ? 'Fill Color' : wall ? 'Wall Color' : 'Color'}
         <input
           type="color"
-          value={room ? room.fill : (item as FurnitureItem).color}
+          value={room ? room.fill : wall ? wall.color : (item as FurnitureItem).color}
           onChange={(e) =>
-            updateEntity(entity.id, room ? { fill: e.target.value } : { color: e.target.value }, {
-              commit: true,
-            })
+            updateEntity(
+              entity.id,
+              room ? { fill: e.target.value } : { color: e.target.value },
+              { commit: true }
+            )
           }
           className="h-7 w-14 cursor-pointer rounded border border-slate-300"
         />

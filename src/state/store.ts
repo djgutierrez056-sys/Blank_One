@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Entity, FurnitureItem, Project, Room, ToolMode } from './types';
+import type { Entity, FurnitureItem, Project, Room, ToolMode, Wall } from './types';
 import { getCatalogEntry } from '../data/catalog';
 import { loadFromLocalStorage, saveToLocalStorage } from '../utils/persistence';
 
@@ -15,6 +15,7 @@ export function emptyProject(): Project {
     name: 'Untitled Plan',
     rooms: [],
     items: [],
+    walls: [],
     scale: 20, // px per foot
     gridSnap: 0.5, // feet
     showLabels: true,
@@ -25,6 +26,8 @@ interface HistoryState {
   past: Project[];
   future: Project[];
 }
+
+type EntityChanges = Partial<Room> & Partial<FurnitureItem> & Partial<Wall>;
 
 interface PlannerState extends HistoryState {
   project: Project;
@@ -42,8 +45,9 @@ interface PlannerState extends HistoryState {
 
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
+  addWall: (partial: Partial<Wall>) => string;
   addItemFromCatalog: (catalogId: string, x: number, y: number) => string;
-  updateEntity: (id: string, changes: Partial<Room> & Partial<FurnitureItem>, opts?: { commit?: boolean }) => void;
+  updateEntity: (id: string, changes: EntityChanges, opts?: { commit?: boolean }) => void;
   deleteSelected: () => void;
 
   copy: () => void;
@@ -67,6 +71,7 @@ function cloneProject(p: Project): Project {
     ...p,
     rooms: p.rooms.map((r) => ({ ...r })),
     items: p.items.map((i) => ({ ...i })),
+    walls: p.walls.map((w) => ({ ...w })),
   };
 }
 
@@ -75,10 +80,25 @@ function findEntities(project: Project, ids: string[]): Entity[] {
   return [
     ...project.rooms.filter((r) => idSet.has(r.id)),
     ...project.items.filter((i) => idSet.has(i.id)),
+    ...project.walls.filter((w) => idSet.has(w.id)),
   ];
 }
 
+function mapCollections(
+  project: Project,
+  idSet: Set<string>,
+  transform: <T extends Entity>(e: T) => T
+): Project {
+  return {
+    ...project,
+    rooms: project.rooms.map((r) => (idSet.has(r.id) ? transform(r) : r)),
+    items: project.items.map((i) => (idSet.has(i.id) ? transform(i) : i)),
+    walls: project.walls.map((w) => (idSet.has(w.id) ? transform(w) : w)),
+  };
+}
+
 const initialProject = loadFromLocalStorage() ?? emptyProject();
+if (!initialProject.walls) initialProject.walls = [];
 
 export const usePlannerStore = create<PlannerState>((set, get) => ({
   project: initialProject,
@@ -91,7 +111,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   dropCascade: 0,
 
   setCanvasSize: (size) => set({ canvasSize: size }),
-  setTool: (tool) => set({ tool, selectedIds: tool === 'draw-room' ? [] : get().selectedIds }),
+  setTool: (tool) =>
+    set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
 
   select: (ids) => set({ selectedIds: ids }),
   toggleSelect: (id, additive) =>
@@ -132,6 +153,29 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     return id;
   },
 
+  addWall: (partial) => {
+    get().beginChange();
+    const id = makeId('wall');
+    const wall: Wall = {
+      id,
+      kind: 'wall',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 8,
+      rotation: 0,
+      color: '#9aa0ab',
+      label: 'Wall',
+      ...partial,
+    };
+    set((s) => ({
+      project: { ...s.project, walls: [...s.project.walls, wall] },
+      selectedIds: [id],
+    }));
+    persist(get().project);
+    return id;
+  },
+
   addItemFromCatalog: (catalogId, x, y) => {
     const entry = getCatalogEntry(catalogId);
     if (!entry) return '';
@@ -164,11 +208,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   updateEntity: (id, changes, opts) => {
     if (opts?.commit) get().beginChange();
     set((s) => ({
-      project: {
-        ...s.project,
-        rooms: s.project.rooms.map((r) => (r.id === id ? { ...r, ...(changes as Partial<Room>) } : r)),
-        items: s.project.items.map((i) => (i.id === id ? { ...i, ...(changes as Partial<FurnitureItem>) } : i)),
-      },
+      project: mapCollections(s.project, new Set([id]), (e) => ({ ...e, ...changes })),
     }));
     persist(get().project);
   },
@@ -183,6 +223,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         ...s.project,
         rooms: s.project.rooms.filter((r) => !idSet.has(r.id)),
         items: s.project.items.filter((i) => !idSet.has(i.id)),
+        walls: s.project.walls.filter((w) => !idSet.has(w.id)),
       },
       selectedIds: [],
     }));
@@ -202,20 +243,21 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     set((s) => {
       const newRooms: Room[] = [];
       const newItems: FurnitureItem[] = [];
+      const newWalls: Wall[] = [];
       for (const e of clipboard) {
-        const id = makeId(e.kind === 'room' ? 'room' : 'item');
+        const id = makeId(e.kind);
         newIds.push(id);
-        if (e.kind === 'room') {
-          newRooms.push({ ...e, id, x: e.x + PASTE_OFFSET, y: e.y + PASTE_OFFSET });
-        } else {
-          newItems.push({ ...e, id, x: e.x + PASTE_OFFSET, y: e.y + PASTE_OFFSET });
-        }
+        const offsetEntity = { ...e, id, x: e.x + PASTE_OFFSET, y: e.y + PASTE_OFFSET };
+        if (e.kind === 'room') newRooms.push(offsetEntity as Room);
+        else if (e.kind === 'item') newItems.push(offsetEntity as FurnitureItem);
+        else newWalls.push(offsetEntity as Wall);
       }
       return {
         project: {
           ...s.project,
           rooms: [...s.project.rooms, ...newRooms],
           items: [...s.project.items, ...newItems],
+          walls: [...s.project.walls, ...newWalls],
         },
         selectedIds: newIds,
       };
@@ -234,11 +276,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     get().beginChange();
     const idSet = new Set(selectedIds);
     set(() => ({
-      project: {
-        ...project,
-        rooms: project.rooms.map((r) => (idSet.has(r.id) ? { ...r, rotation: r.rotation + deltaDeg } : r)),
-        items: project.items.map((i) => (idSet.has(i.id) ? { ...i, rotation: i.rotation + deltaDeg } : i)),
-      },
+      project: mapCollections(project, idSet, (e) => ({ ...e, rotation: e.rotation + deltaDeg })),
     }));
     persist(get().project);
   },
@@ -249,11 +287,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     get().beginChange();
     const idSet = new Set(selectedIds);
     set(() => ({
-      project: {
-        ...project,
-        rooms: project.rooms.map((r) => (idSet.has(r.id) ? { ...r, x: r.x + dx, y: r.y + dy } : r)),
-        items: project.items.map((i) => (idSet.has(i.id) ? { ...i, x: i.x + dx, y: i.y + dy } : i)),
-      },
+      project: mapCollections(project, idSet, (e) => ({ ...e, x: e.x + dx, y: e.y + dy })),
     }));
     persist(get().project);
   },
@@ -285,8 +319,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   setProject: (project) => {
-    set({ project, past: [], future: [], selectedIds: [] });
-    persist(project);
+    set({ project: { ...project, walls: project.walls ?? [] }, past: [], future: [], selectedIds: [] });
+    persist(get().project);
   },
 
   newProject: () => {

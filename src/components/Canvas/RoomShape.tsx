@@ -3,7 +3,7 @@ import type Konva from 'konva';
 import { Group, Label as KLabel, Rect, Tag, Text } from 'react-konva';
 import type { Room } from '../../state/types';
 import { usePlannerStore } from '../../state/store';
-import { areaLabel, feetLabel, snapValue } from '../../utils/geometry';
+import { snapValue } from '../../utils/geometry';
 
 interface Props {
   room: Room;
@@ -16,14 +16,11 @@ interface Props {
   toolMode: string;
 }
 
-export function RoomShape({ room, isSelected, scale, gridSnapPx, showLabels, onSelect, registerRef, toolMode }: Props) {
+export function RoomShape({ room, isSelected, gridSnapPx, showLabels, onSelect, registerRef, toolMode }: Props) {
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const beginChange = usePlannerStore((s) => s.beginChange);
   const groupRef = useRef<Konva.Group>(null);
   const t = room.wallThickness;
-
-  const widthFt = room.width / scale;
-  const heightFt = room.height / scale;
 
   return (
     <Group
@@ -76,13 +73,13 @@ export function RoomShape({ room, isSelected, scale, gridSnapPx, showLabels, onS
         <KLabel x={room.width / 2} y={room.height / 2} listening={false}>
           <Tag fill="rgba(255,255,255,0.75)" cornerRadius={4} />
           <Text
-            text={`${room.label}\n${feetLabel(widthFt)} x ${feetLabel(heightFt)}\n${areaLabel(widthFt, heightFt)}`}
+            text={room.label}
             fontSize={13}
             fontFamily="system-ui"
             fill="#3a3f4b"
             align="center"
             padding={6}
-            offsetX={40}
+            offsetX={room.label.length * 3.3}
           />
         </KLabel>
       )}

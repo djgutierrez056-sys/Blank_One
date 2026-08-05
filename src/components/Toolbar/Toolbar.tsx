@@ -84,6 +84,9 @@ export function Toolbar() {
       <Button title="Draw room (click-drag on canvas)" active={tool === 'draw-room'} onClick={() => setTool('draw-room')}>
         + Room
       </Button>
+      <Button title="Draw a wall / divider (click-drag on canvas, any angle)" active={tool === 'draw-wall'} onClick={() => setTool('draw-wall')}>
+        + Wall
+      </Button>
       <Divider />
 
       <Button title="Undo (Ctrl+Z)" onClick={undo} disabled={past.length === 0}>

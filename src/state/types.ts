@@ -24,15 +24,28 @@ export interface FurnitureItem {
   label: string;
 }
 
-export type Entity = Room | FurnitureItem;
+export interface Wall {
+  id: string;
+  kind: 'wall';
+  x: number;
+  y: number;
+  width: number; // length of the wall segment
+  height: number; // thickness
+  rotation: number;
+  color: string;
+  label: string;
+}
+
+export type Entity = Room | FurnitureItem | Wall;
 
 export interface Project {
   name: string;
   rooms: Room[];
   items: FurnitureItem[];
+  walls: Wall[];
   scale: number; // px per foot
   gridSnap: number; // feet
   showLabels: boolean;
 }
 
-export type ToolMode = 'select' | 'draw-room';
+export type ToolMode = 'select' | 'draw-room' | 'draw-wall';
