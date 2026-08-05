@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from app.io import load_project, save_project
 from app.items.furniture_item import FurnitureItem
+from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
 from app.models import Project
 from app.scene import DesignScene
@@ -140,11 +141,14 @@ class PropertyPanel(QWidget):
     def set_selection(self, gfx) -> None:
         self._current = gfx
         is_furniture = isinstance(gfx, FurnitureItem)
+        is_room_label = isinstance(gfx, RoomLabelItem)
         self.group.setVisible(gfx is not None)
         self.empty_label.setVisible(gfx is None)
         self.rotation_spin.setEnabled(is_furniture)
         self.color_button.setEnabled(is_furniture)
-        self.label_edit.setEnabled(is_furniture)
+        self.label_edit.setEnabled(is_furniture or is_room_label)
+        self.width_spin.setEnabled(is_furniture or isinstance(gfx, WallItem))
+        self.height_spin.setEnabled(is_furniture or isinstance(gfx, WallItem))
         if gfx is None:
             return
         self._updating = True
@@ -161,6 +165,11 @@ class PropertyPanel(QWidget):
             self.width_spin.setValue(length)
             self.height_spin.setValue(gfx.model.thickness)
             self.rotation_spin.setValue(0)
+        elif is_room_label:
+            self.label_edit.setText(gfx.model.text)
+            self.width_spin.setValue(0)
+            self.height_spin.setValue(0)
+            self.rotation_spin.setValue(0)
         self._updating = False
 
     def refresh_values(self) -> None:
@@ -169,10 +178,15 @@ class PropertyPanel(QWidget):
         self.set_selection(self._current)
 
     def _apply_label(self) -> None:
-        if self._updating or not isinstance(self._current, FurnitureItem):
+        if self._updating:
             return
-        self._current.model.label = self.label_edit.text()
-        self._current.update()
+        if isinstance(self._current, FurnitureItem):
+            self._current.model.label = self.label_edit.text()
+            self._current.update()
+        elif isinstance(self._current, RoomLabelItem):
+            text = self.label_edit.text().strip() or "Room"
+            self._current.model.text = text
+            self._current.setPlainText(text)
 
     def _apply_size(self) -> None:
         if self._updating or self._current is None:
@@ -254,6 +268,10 @@ class MainWindow(QMainWindow):
         self._mode_actions = {"select": select_action, "draw_wall": wall_action}
 
         toolbar.addSeparator()
+        add_label_action = QAction("Add Room Label", self)
+        add_label_action.triggered.connect(self._add_room_label)
+        toolbar.addAction(add_label_action)
+
         delete_action = QAction("Delete Selected", self)
         delete_action.setShortcut("Delete")
         delete_action.triggered.connect(self.scene.remove_selected)
@@ -372,6 +390,13 @@ class MainWindow(QMainWindow):
             color=entry["color"],
             pos=center,
         )
+        self._set_mode("select")
+
+    def _add_room_label(self) -> None:
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        gfx = self.scene.add_room_label(center)
+        self.scene.clearSelection()
+        gfx.setSelected(True)
         self._set_mode("select")
 
     def _new_project(self) -> None:

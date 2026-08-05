@@ -12,7 +12,7 @@ import math
 from enum import Enum, auto
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QTransform
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsSceneMouseEvent,
@@ -60,6 +60,7 @@ class FurnitureItem(QGraphicsItem):
         self._drag_start_scene = QPointF()
         self._drag_start_rect = QRectF()
         self._drag_start_rotation = 0.0
+        self._drag_start_transform = QTransform()
         self._before_snapshot: dict | None = None
         self.setPos(model.x, model.y)
         self.setRotation(model.rotation)
@@ -179,6 +180,9 @@ class FurnitureItem(QGraphicsItem):
             self._drag_start_scene = event.scenePos()
             self._drag_start_rect = self._body_rect()
             self._drag_start_rotation = self.rotation()
+            self._drag_start_transform = QTransform()
+            self._drag_start_transform.translate(self.pos().x(), self.pos().y())
+            self._drag_start_transform.rotate(self.rotation())
             event.accept()
             return
         self._active_handle = HandleKind.NONE
@@ -217,7 +221,13 @@ class FurnitureItem(QGraphicsItem):
             self.scene().undo_stack.push(ModifyModelCommand(self, before, after, "Rotate item"))
 
     def _resize_to(self, scene_pos: QPointF) -> None:
-        local = self.mapFromScene(scene_pos)
+        # Map through the transform captured at drag-start (not the live,
+        # currently-moving transform) so each frame is computed fresh from a
+        # fixed reference instead of compounding on the previous frame's
+        # result -- using the live transform here caused runaway drift.
+        inverse, invertible = self._drag_start_transform.inverted()
+        local = inverse.map(scene_pos) if invertible else self.mapFromScene(scene_pos)
+
         r = QRectF(self._drag_start_rect)
         h = self._active_handle
         if h in (HandleKind.TOP_LEFT, HandleKind.TOP, HandleKind.LEFT, HandleKind.BOTTOM_LEFT):
@@ -236,9 +246,10 @@ class FurnitureItem(QGraphicsItem):
         self.prepareGeometryChange()
         self.model.width = new_w
         self.model.height = new_h
-        # shift position so the anchored edge/corner stays put
-        offset_scene = self.mapToScene(center_offset) - self.mapToScene(QPointF(0, 0))
-        self.setPos(self.pos() + offset_scene)
+        # shift position so the anchored edge/corner stays put, computed from
+        # the same fixed drag-start transform
+        new_center_scene = self._drag_start_transform.map(center_offset)
+        self.setPos(new_center_scene)
         self.model.x = self.pos().x()
         self.model.y = self.pos().y()
         self.update()

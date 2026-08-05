@@ -12,8 +12,9 @@ from PySide6.QtWidgets import QGraphicsLineItem, QGraphicsScene, QGraphicsSceneM
 
 from app.commands import AddItemCommand, DeleteItemsCommand
 from app.items.furniture_item import FurnitureItem
+from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
-from app.models import PlacedItem, Project, Wall, next_id
+from app.models import PlacedItem, Project, RoomLabel, Wall, next_id
 
 MINOR_GRID_MM = 100.0
 MAJOR_GRID_MM = 1000.0
@@ -41,6 +42,14 @@ class DesignScene(QGraphicsScene):
             self.addItem(WallItem(wall, GRID_SNAP_MM))
         for placed in project.items:
             self.addItem(FurnitureItem(placed, GRID_SNAP_MM))
+        for room_label in project.room_labels:
+            self.addItem(RoomLabelItem(room_label))
+
+    def add_room_label(self, pos: QPointF, text: str = "Room") -> RoomLabelItem:
+        model = RoomLabel(id=next_id(), text=text, x=pos.x(), y=pos.y())
+        gfx = RoomLabelItem(model)
+        self.undo_stack.push(AddItemCommand(self, model, gfx, self.project.room_labels, "Add room label"))
+        return gfx
 
     def add_furniture(self, item_type: str, label: str, width: float, height: float, color: str, pos: QPointF) -> FurnitureItem:
         model = PlacedItem(
@@ -64,6 +73,8 @@ class DesignScene(QGraphicsScene):
                 entries.append((gfx.model, gfx, self.project.items))
             elif isinstance(gfx, WallItem):
                 entries.append((gfx.model, gfx, self.project.walls))
+            elif isinstance(gfx, RoomLabelItem):
+                entries.append((gfx.model, gfx, self.project.room_labels))
         if entries:
             self.undo_stack.push(DeleteItemsCommand(self, entries, "Delete"))
 
@@ -166,7 +177,9 @@ class DesignScene(QGraphicsScene):
             self.set_mode(self.mode if self.mode != "draw_wall" else "select")
             event.accept()
             return
-        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace) and self.focusItem() is None:
+            # focusItem() is set while a room label is being edited in place --
+            # in that case Delete/Backspace must edit the text, not delete the item.
             self.remove_selected()
             event.accept()
             return
