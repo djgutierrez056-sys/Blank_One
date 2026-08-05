@@ -4,8 +4,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QAction, QActionGroup, QColor, QMouseEvent, QPainter, QPixmap, QWheelEvent
+from PySide6.QtCore import QRectF, QSettings, Qt
+from PySide6.QtGui import QAction, QActionGroup, QColor, QContextMenuEvent, QMouseEvent, QPainter, QPixmap, QWheelEvent
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import (
     QColorDialog,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QToolBar,
@@ -35,9 +36,10 @@ from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
 from app.models import Project
 from app.scene import DesignScene
-from app.units import DisplayUnits
+from app.units import DisplayUnits, format_area, format_length
 
 CATALOG_PATH = Path(__file__).parent / "catalog.json"
+MAX_RECENT_FILES = 5
 
 
 class DesignView(QGraphicsView):
@@ -79,6 +81,51 @@ class DesignView(QGraphicsView):
             self._panning = False
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        scene = self.scene()
+        gfx = self.itemAt(event.pos())
+        if gfx is not None and not gfx.isSelected():
+            scene.clearSelection()
+            gfx.setSelected(True)
+
+        menu = QMenu(self)
+        duplicate_action = menu.addAction("Duplicate")
+        duplicate_action.setEnabled(bool(scene.selectedItems()))
+        duplicate_action.triggered.connect(scene.duplicate_selection)
+
+        delete_action = menu.addAction("Delete")
+        delete_action.setEnabled(bool(scene.selectedItems()))
+        delete_action.triggered.connect(scene.remove_selected)
+
+        if isinstance(gfx, FurnitureItem):
+            menu.addSeparator()
+            rotate_left = menu.addAction("Rotate -90°")
+            rotate_left.triggered.connect(lambda: gfx.rotate_by(-90))
+            rotate_right = menu.addAction("Rotate +90°")
+            rotate_right.triggered.connect(lambda: gfx.rotate_by(90))
+
+            menu.addSeparator()
+            front_action = menu.addAction("Bring to Front")
+            front_action.triggered.connect(lambda: self._change_z_order(gfx, front=True))
+            back_action = menu.addAction("Send to Back")
+            back_action.triggered.connect(lambda: self._change_z_order(gfx, front=False))
+
+            menu.addSeparator()
+            lock_action = menu.addAction("Unlock" if gfx.model.locked else "Lock")
+            lock_action.triggered.connect(lambda: gfx.set_locked(not gfx.model.locked))
+
+        menu.exec(event.globalPos())
+
+    @staticmethod
+    def _change_z_order(gfx: FurnitureItem, front: bool) -> None:
+        siblings = [it for it in gfx.scene().items() if isinstance(it, FurnitureItem) and it is not gfx]
+        if not siblings:
+            return
+        if front:
+            gfx.setZValue(max(it.zValue() for it in siblings) + 1)
+        else:
+            gfx.setZValue(min(it.zValue() for it in siblings) - 1)
 
 
 class PropertyPanel(QWidget):
@@ -236,6 +283,7 @@ class MainWindow(QMainWindow):
         self.resize(1300, 850)
 
         self.current_path: Path | None = None
+        self.settings = QSettings("BlankOne", "LayoutDesigner")
         self.scene = DesignScene(Project())
         self.view = DesignView(self.scene)
         self.setCentralWidget(self.view)
@@ -292,6 +340,28 @@ class MainWindow(QMainWindow):
         unit_combo.currentIndexChanged.connect(self._on_unit_changed)
         toolbar.addWidget(unit_combo)
 
+        toolbar.addSeparator()
+        bg_action = QAction("Background Color...", self)
+        bg_action.triggered.connect(self._choose_background_color)
+        toolbar.addAction(bg_action)
+
+        # Copy/paste/duplicate/nudge have no visible toolbar button but need
+        # app-wide shortcuts, so register them directly on the window.
+        self.copy_action = QAction(self)
+        self.copy_action.setShortcut("Ctrl+C")
+        self.copy_action.triggered.connect(self.scene.copy_selection)
+        self.addAction(self.copy_action)
+
+        self.paste_action = QAction(self)
+        self.paste_action.setShortcut("Ctrl+V")
+        self.paste_action.triggered.connect(self.scene.paste)
+        self.addAction(self.paste_action)
+
+        self.duplicate_action = QAction(self)
+        self.duplicate_action.setShortcut("Ctrl+D")
+        self.duplicate_action.triggered.connect(self.scene.duplicate_selection)
+        self.addAction(self.duplicate_action)
+
     def _build_item_palette(self) -> None:
         catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
         categories: dict[str, list[dict]] = {}
@@ -338,6 +408,9 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self._open_project)
         file_menu.addAction(open_action)
 
+        self.recent_menu = file_menu.addMenu("Open Recent")
+        self._refresh_recent_menu()
+
         save_action = QAction("Save", self)
         save_action.setShortcut("Ctrl+S")
         save_action.triggered.connect(self._save_project)
@@ -359,6 +432,13 @@ class MainWindow(QMainWindow):
         edit_menu = self.menuBar().addMenu("&Edit")
         edit_menu.addAction(self.undo_action)
         edit_menu.addAction(self.redo_action)
+        edit_menu.addSeparator()
+        edit_menu.addAction(self.copy_action)
+        self.copy_action.setText("Copy")
+        edit_menu.addAction(self.paste_action)
+        self.paste_action.setText("Paste")
+        edit_menu.addAction(self.duplicate_action)
+        self.duplicate_action.setText("Duplicate")
 
     # -- actions --------------------------------------------------------------
     def _set_mode(self, mode: str) -> None:
@@ -376,6 +456,33 @@ class MainWindow(QMainWindow):
     def _on_unit_changed(self, index: int) -> None:
         DisplayUnits.current = "metric" if index == 0 else "imperial"
         self.scene.update()
+
+    def _choose_background_color(self) -> None:
+        color = QColorDialog.getColor(QColor(self.scene.project.background_color), self, "Choose Background Color")
+        if color.isValid():
+            self.scene.project.background_color = color.name()
+            self.scene.update()
+
+    # -- recent files ---------------------------------------------------------
+    def _recent_files(self) -> list[str]:
+        return list(self.settings.value("recentFiles", []) or [])
+
+    def _add_recent_file(self, path: str) -> None:
+        recent = [p for p in self._recent_files() if p != path]
+        recent.insert(0, path)
+        self.settings.setValue("recentFiles", recent[:MAX_RECENT_FILES])
+        self._refresh_recent_menu()
+
+    def _refresh_recent_menu(self) -> None:
+        self.recent_menu.clear()
+        recent = self._recent_files()
+        if not recent:
+            empty_action = self.recent_menu.addAction("(No recent files)")
+            empty_action.setEnabled(False)
+            return
+        for path in recent:
+            action = self.recent_menu.addAction(path)
+            action.triggered.connect(lambda checked=False, p=path: self._open_project_path(p))
 
     def _on_palette_item_chosen(self, tree_item: QTreeWidgetItem, _column: int) -> None:
         entry = tree_item.data(0, Qt.ItemDataRole.UserRole)
@@ -407,6 +514,9 @@ class MainWindow(QMainWindow):
         path, _ = QFileDialog.getOpenFileName(self, "Open Layout", "", "Layout Files (*.json)")
         if not path:
             return
+        self._open_project_path(path)
+
+    def _open_project_path(self, path: str) -> None:
         try:
             project = load_project(path)
         except Exception as exc:  # noqa: BLE001 - surface any load error to the user
@@ -414,12 +524,14 @@ class MainWindow(QMainWindow):
             return
         self.current_path = Path(path)
         self.scene.rebuild_from_project(project)
+        self._add_recent_file(path)
 
     def _save_project(self) -> None:
         if self.current_path is None:
             self._save_project_as()
             return
         save_project(self.scene.project, self.current_path)
+        self._add_recent_file(str(self.current_path))
 
     def _save_project_as(self) -> None:
         path, _ = QFileDialog.getSaveFileName(self, "Save Layout As", "layout.json", "Layout Files (*.json)")
@@ -427,6 +539,7 @@ class MainWindow(QMainWindow):
             return
         self.current_path = Path(path)
         save_project(self.scene.project, self.current_path)
+        self._add_recent_file(path)
 
     def _export_bounds(self):
         bounds = self.scene.itemsBoundingRect()
@@ -442,11 +555,13 @@ class MainWindow(QMainWindow):
             return
         bounds = self._export_bounds()
         scale = 0.3  # px per mm
-        image = QPixmap(max(1, int(bounds.width() * scale)), max(1, int(bounds.height() * scale)))
+        target = QRectF(0, 0, max(1, bounds.width() * scale), max(1, bounds.height() * scale))
+        image = QPixmap(int(target.width()), int(target.height()))
         image.fill(Qt.GlobalColor.white)
         painter = QPainter(image)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.scene.render(painter, image.rect().toRectF(), bounds)
+        self.scene.render(painter, target, bounds)
+        self._draw_export_footer(painter, target, bounds)
         painter.end()
         image.save(path)
 
@@ -459,5 +574,36 @@ class MainWindow(QMainWindow):
         printer.setOutputFileName(path)
         painter = QPainter(printer)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.scene.render(painter, QRectF(printer.pageRect(QPrinter.Unit.DevicePixel)), self._export_bounds())
+        bounds = self._export_bounds()
+        target = QRectF(printer.pageRect(QPrinter.Unit.DevicePixel))
+        self.scene.render(painter, target, bounds)
+        self._draw_export_footer(painter, target, bounds)
         painter.end()
+
+    def _draw_export_footer(self, painter: QPainter, target: QRectF, bounds: QRectF) -> None:
+        """Draw a scale bar (bottom-left) and an item-count/area summary
+        (bottom-right) on top of an exported PNG/PDF."""
+        scale_px_per_mm = target.width() / bounds.width() if bounds.width() else 1.0
+
+        candidates_mm = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000]
+        bar_mm = candidates_mm[-1]
+        for candidate in candidates_mm:
+            if candidate * scale_px_per_mm >= 100:
+                bar_mm = candidate
+                break
+        bar_px = bar_mm * scale_px_per_mm
+
+        margin = 20
+        y = target.bottom() - margin
+        x0 = target.left() + margin
+        painter.setPen(QColor("#222222"))
+        painter.drawLine(int(x0), int(y), int(x0 + bar_px), int(y))
+        painter.drawLine(int(x0), int(y - 6), int(x0), int(y + 6))
+        painter.drawLine(int(x0 + bar_px), int(y - 6), int(x0 + bar_px), int(y + 6))
+        painter.drawText(int(x0), int(y - 10), format_length(bar_mm))
+
+        item_count = len(self.scene.project.items)
+        total_area_sq_mm = sum(i.width * i.height for i in self.scene.project.items)
+        summary = f"{item_count} item{'s' if item_count != 1 else ''} | {format_area(total_area_sq_mm)} furniture footprint"
+        metrics_rect = QRectF(target.left(), target.bottom() - margin - 20, target.width() - margin, 20)
+        painter.drawText(metrics_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, summary)

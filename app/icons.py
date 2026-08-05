@@ -103,6 +103,13 @@ def _stove(p: QPainter, r: QRectF) -> None:
             p.drawEllipse(QPointF(cx, cy), burner_r, burner_r)
 
 
+def _table(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.1)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRoundedRect(r, r.width() * 0.05, r.height() * 0.05)
+
+
 def _sofa(p: QPainter, r: QRectF) -> None:
     r = _inset(r, 0.08)
     p.setPen(_line_pen())
@@ -226,6 +233,96 @@ def _mailbox(p: QPainter, r: QRectF) -> None:
     p.drawLine(QPointF(r.center().x(), box.bottom()), QPointF(r.center().x(), r.bottom()))
 
 
+def _driveway(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.05)
+    p.setPen(_line_pen(4))
+    step = min(r.width(), r.height()) / 3
+    x = r.left() - r.height()
+    while x < r.right():
+        p.drawLine(QPointF(x, r.bottom()), QPointF(x + r.height(), r.top()))
+        x += step
+
+
+def _hot_tub(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.1)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(r)
+    inner = _inset(r, 0.25)
+    p.drawEllipse(inner)
+
+
+def _firepit(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.12)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(r)
+    cx, cy = r.center().x(), r.center().y()
+    for dx, dy in ((0, -1), (-0.6, 0.6), (0.6, 0.6)):
+        p.drawLine(QPointF(cx, cy), QPointF(cx + dx * r.width() * 0.3, cy + dy * r.height() * 0.3))
+
+
+def _playground(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.1)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(QPointF(r.left(), r.bottom()), QPointF(r.left(), r.top()))
+    p.drawLine(QPointF(r.right(), r.bottom()), QPointF(r.right(), r.top()))
+    p.drawLine(QPointF(r.left(), r.top()), QPointF(r.right(), r.top()))
+    mid_x = r.center().x()
+    p.drawLine(QPointF(mid_x, r.top()), QPointF(mid_x, r.top() + r.height() * 0.5))
+
+
+def _garden_path(p: QPainter, r: QRectF) -> None:
+    p.setPen(_line_pen(4))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    n = 5
+    stone_h = r.height() / n * 0.55
+    for i in range(n):
+        cy = r.top() + r.height() * (i + 0.5) / n
+        stone = QRectF(r.left(), cy - stone_h / 2, r.width(), stone_h)
+        p.drawEllipse(stone)
+
+
+def _compost_bin(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.1)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawRect(r)
+    p.drawLine(r.topLeft(), r.bottomRight())
+    p.drawLine(r.topRight(), r.bottomLeft())
+
+
+def _rain_barrel(p: QPainter, r: QRectF) -> None:
+    r = _inset(r, 0.1)
+    p.setPen(_line_pen())
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(r)
+    inner = _inset(r, 0.3)
+    p.drawEllipse(inner)
+
+
+def _stairs(p: QPainter, r: QRectF) -> None:
+    p.setPen(_line_pen(6))
+    n = 6
+    for i in range(1, n):
+        y = r.top() + r.height() * i / n
+        p.drawLine(QPointF(r.left(), y), QPointF(r.right(), y))
+    p.drawLine(QPointF(r.left(), r.top()), QPointF(r.right(), r.top()))
+
+
+def _closet(p: QPainter, r: QRectF) -> None:
+    p.setPen(_line_pen(6))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawLine(r.topLeft(), r.bottomRight())
+
+
+def _counter(p: QPainter, r: QRectF) -> None:
+    p.setPen(_line_pen(6))
+    inset = r.height() * 0.15
+    p.drawLine(QPointF(r.left(), r.top() + inset), QPointF(r.right(), r.top() + inset))
+
+
 ICON_DRAWERS: dict[str, Callable[[QPainter, QRectF], None]] = {
     "bed": _bed,
     "dresser": _dresser,
@@ -237,6 +334,7 @@ ICON_DRAWERS: dict[str, Callable[[QPainter, QRectF], None]] = {
     "dryer": _drum_appliance,
     "fridge": _fridge,
     "stove": _stove,
+    "table": _table,
     "sofa": _sofa,
     "door": _door,
     "window": _window,
@@ -252,6 +350,16 @@ ICON_DRAWERS: dict[str, Callable[[QPainter, QRectF], None]] = {
     "fence": _fence,
     "grill": _grill,
     "mailbox": _mailbox,
+    "driveway": _driveway,
+    "hot_tub": _hot_tub,
+    "firepit": _firepit,
+    "playground": _playground,
+    "garden_path": _garden_path,
+    "compost_bin": _compost_bin,
+    "rain_barrel": _rain_barrel,
+    "stairs": _stairs,
+    "closet": _closet,
+    "counter": _counter,
 }
 
 

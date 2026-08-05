@@ -44,6 +44,7 @@ class PlacedItem:
     height: float  # mm
     rotation: float = 0.0  # degrees
     color: str = "#cccccc"
+    locked: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -75,6 +76,7 @@ class Project:
     walls: list[Wall] = field(default_factory=list)
     items: list[PlacedItem] = field(default_factory=list)
     room_labels: list[RoomLabel] = field(default_factory=list)
+    background_color: str = "#fafafa"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +84,7 @@ class Project:
             "walls": [w.to_dict() for w in self.walls],
             "items": [i.to_dict() for i in self.items],
             "room_labels": [r.to_dict() for r in self.room_labels],
+            "background_color": self.background_color,
         }
 
     @classmethod
@@ -91,4 +94,5 @@ class Project:
             walls=[Wall.from_dict(w) for w in data.get("walls", [])],
             items=[PlacedItem.from_dict(i) for i in data.get("items", [])],
             room_labels=[RoomLabel.from_dict(r) for r in data.get("room_labels", [])],
+            background_color=data.get("background_color", "#fafafa"),
         )

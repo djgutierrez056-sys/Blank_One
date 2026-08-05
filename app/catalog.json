@@ -24,5 +24,15 @@
   {"type": "porch", "label": "Porch", "category": "Porch & Patio", "width": 3000, "height": 2000, "color": "#d9c7a3"},
   {"type": "deck", "label": "Deck", "category": "Porch & Patio", "width": 4000, "height": 3000, "color": "#c8a876"},
   {"type": "patio", "label": "Patio", "category": "Porch & Patio", "width": 3500, "height": 3000, "color": "#c7c2b8"},
-  {"type": "walkway", "label": "Walkway", "category": "Porch & Patio", "width": 1000, "height": 3000, "color": "#c9c9c9"}
+  {"type": "walkway", "label": "Walkway", "category": "Porch & Patio", "width": 1000, "height": 3000, "color": "#c9c9c9"},
+  {"type": "driveway", "label": "Driveway", "category": "Porch & Patio", "width": 3000, "height": 6000, "color": "#b6b6b6"},
+  {"type": "hot_tub", "label": "Hot Tub", "category": "Yard & Garden", "width": 2000, "height": 2000, "color": "#7fc4d9"},
+  {"type": "firepit", "label": "Fire Pit", "category": "Yard & Garden", "width": 1000, "height": 1000, "color": "#a67c52"},
+  {"type": "playground", "label": "Swing Set", "category": "Yard & Garden", "width": 2500, "height": 2000, "color": "#d9a866"},
+  {"type": "garden_path", "label": "Garden Path", "category": "Yard & Garden", "width": 800, "height": 3000, "color": "#c2b8a3"},
+  {"type": "compost_bin", "label": "Compost Bin", "category": "Yard & Garden", "width": 800, "height": 800, "color": "#8a6b4d"},
+  {"type": "rain_barrel", "label": "Rain Barrel", "category": "Yard & Garden", "width": 500, "height": 500, "color": "#6b8a6b"},
+  {"type": "stairs", "label": "Stairs", "category": "Interior Features", "width": 1000, "height": 3000, "color": "#c9c9c9"},
+  {"type": "closet", "label": "Closet", "category": "Interior Features", "width": 900, "height": 600, "color": "#dcdcdc"},
+  {"type": "counter", "label": "Counter", "category": "Interior Features", "width": 1500, "height": 600, "color": "#e0c9a6"}
 ]

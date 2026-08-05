@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from enum import Enum, auto
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QTransform
 from PySide6.QtWidgets import (
     QGraphicsItem,
@@ -30,6 +30,8 @@ ROTATE_HANDLE_OFFSET = 350.0  # mm above the item's top edge
 MIN_SIZE = 100.0  # mm, smallest a side can be resized to
 WALL_SNAP_DISTANCE = 300.0  # mm, how close a door/window must be to snap onto a wall
 WALL_HOSTED_TYPES = {"door", "window"}
+ALIGN_THRESHOLD = 100.0  # mm, how close to another item's edge/center before snapping to it
+GUIDE_REACH = 8000.0  # mm, how far a drawn alignment guide line extends
 
 
 class HandleKind(Enum):
@@ -65,6 +67,18 @@ class FurnitureItem(QGraphicsItem):
         self.setPos(model.x, model.y)
         self.setRotation(model.rotation)
         self.setZValue(10)
+        if model.locked:
+            self.set_locked(True)
+
+    def set_locked(self, locked: bool) -> None:
+        self.model.locked = locked
+        flags = self.flags()
+        if locked:
+            flags &= ~QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+        else:
+            flags |= QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+        self.setFlags(flags)
+        self.update()
 
     def sync_from_model(self) -> None:
         """Re-apply model fields to this graphics item (used by undo/redo)."""
@@ -141,6 +155,17 @@ class FurnitureItem(QGraphicsItem):
         label_strip = QRectF(r.left(), r.bottom() - r.height() * 0.22, r.width(), r.height() * 0.22)
         painter.drawText(label_strip, Qt.AlignmentFlag.AlignCenter, self.model.label)
 
+        if self.model.locked:
+            lock_size = max(60.0, min(r.width(), r.height()) * 0.18)
+            lock_rect = QRectF(r.right() - lock_size * 1.3, r.top() + lock_size * 0.3, lock_size, lock_size * 0.8)
+            painter.setPen(QPen(QColor("#333333"), 8))
+            painter.setBrush(QBrush(QColor("#eeeeee")))
+            painter.drawRoundedRect(lock_rect, lock_size * 0.15, lock_size * 0.15)
+            shackle = QRectF(0, 0, lock_size * 0.6, lock_size * 0.7)
+            shackle.moveCenter(QPointF(lock_rect.center().x(), lock_rect.top()))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawArc(shackle, 0, 180 * 16)
+
         if self.isSelected():
             dim_text = f"{format_length(self.model.width)} x {format_length(self.model.height)}"
             dim_rect = QRectF(r.left(), r.bottom() + 10, r.width(), 200)
@@ -165,7 +190,7 @@ class FurnitureItem(QGraphicsItem):
 
     # -- interaction ------------------------------------------------------
     def _handle_at(self, item_pos: QPointF) -> HandleKind:
-        if not self.isSelected():
+        if not self.isSelected() or self.model.locked:
             return HandleKind.NONE
         for kind, pos in self._handle_positions().items():
             if (item_pos - pos).manhattanLength() <= HANDLE_SIZE * 1.5:
@@ -206,6 +231,9 @@ class FurnitureItem(QGraphicsItem):
         self._active_handle = HandleKind.NONE
         super().mouseReleaseEvent(event)
         self._push_undo_if_changed()
+        if self.scene() is not None:
+            self.scene().active_guides = []
+            self.scene().update()
 
     def rotate_by(self, degrees: float) -> None:
         """Rotate around the item's center; used by the property panel."""
@@ -277,6 +305,39 @@ class FurnitureItem(QGraphicsItem):
         self.model.rotation = best_angle % 360
         return best_point
 
+    def _align_to_other_items(self, point: QPointF) -> QPointF:
+        """Snap a plain (non-resize) move so this item's edges/center line up
+        with another furniture item's edges/center, drawing dashed guide
+        lines while the snap is active."""
+        w, h = self.model.width, self.model.height
+        my_x_candidates = (point.x() - w / 2, point.x(), point.x() + w / 2)
+        my_y_candidates = (point.y() - h / 2, point.y(), point.y() + h / 2)
+        best_dx, guide_x = None, None
+        best_dy, guide_y = None, None
+        for gfx in self.scene().items():
+            if gfx is self or not isinstance(gfx, FurnitureItem):
+                continue
+            ow, oh, ox, oy = gfx.model.width, gfx.model.height, gfx.model.x, gfx.model.y
+            for other_x in (ox - ow / 2, ox, ox + ow / 2):
+                for my_x in my_x_candidates:
+                    d = other_x - my_x
+                    if abs(d) <= ALIGN_THRESHOLD and (best_dx is None or abs(d) < abs(best_dx)):
+                        best_dx, guide_x = d, other_x
+            for other_y in (oy - oh / 2, oy, oy + oh / 2):
+                for my_y in my_y_candidates:
+                    d = other_y - my_y
+                    if abs(d) <= ALIGN_THRESHOLD and (best_dy is None or abs(d) < abs(best_dy)):
+                        best_dy, guide_y = d, other_y
+
+        new_point = QPointF(point.x() + (best_dx or 0), point.y() + (best_dy or 0))
+        guides = []
+        if guide_x is not None:
+            guides.append(QLineF(guide_x, new_point.y() - GUIDE_REACH, guide_x, new_point.y() + GUIDE_REACH))
+        if guide_y is not None:
+            guides.append(QLineF(new_point.x() - GUIDE_REACH, guide_y, new_point.x() + GUIDE_REACH, guide_y))
+        self.scene().active_guides = guides
+        return new_point
+
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene() is not None:
             point: QPointF = value
@@ -286,6 +347,8 @@ class FurnitureItem(QGraphicsItem):
             snap = self.grid_snap_mm
             if snap > 0:
                 point = QPointF(round(point.x() / snap) * snap, round(point.y() / snap) * snap)
+            if self._active_handle == HandleKind.NONE and self.model.item_type not in WALL_HOSTED_TYPES:
+                point = self._align_to_other_items(point)
             return point
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             self.model.x = self.pos().x()
