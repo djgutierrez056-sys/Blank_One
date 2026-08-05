@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QToolBar,
     QTreeWidget,
     QTreeWidgetItem,
@@ -44,12 +45,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.camera3d import Camera
 from app.io import load_project, save_project
 from app.items.furniture_item import FurnitureItem
 from app.items.room_label_item import RoomLabelItem
 from app.items.wall_item import WallItem
 from app.models import Floor, Project, next_id
 from app.scene import DesignScene
+from app.scene_3d import Interactive3DScene
+from app.scene_3d_view import Interactive3DView
 from app.templates import TemplateLibrary
 from app.units import DisplayUnits, format_area, format_length
 
@@ -333,9 +337,17 @@ class MainWindow(QMainWindow):
         self.scene = DesignScene(self.doc.floors[0], undo_stack=self._stack_for_floor(self.doc.floors[0]))
         self.undo_group.setActiveStack(self.scene.undo_stack)
         self.view = DesignView(self.scene)
-        self.setCentralWidget(self.view)
         self.scene.selectionChanged.connect(self._on_selection_changed)
         self.scene.changed.connect(lambda _regions: self.property_panel.refresh_values())
+
+        self.camera3d = Camera()
+        self.scene3d = Interactive3DScene(self.scene.floor, self.camera3d, self.scene.undo_stack)
+        self.view3d = Interactive3DView(self.scene3d)
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.view3d)  # index 0: 3D is the primary/default view
+        self.view_stack.addWidget(self.view)    # index 1: 2D plan, for precise wall drawing
+        self.setCentralWidget(self.view_stack)
 
         self.undo_action = self.undo_group.createUndoAction(self, "Undo")
         self.undo_action.setShortcut("Ctrl+Z")
@@ -384,7 +396,7 @@ class MainWindow(QMainWindow):
 
         delete_action = QAction("Delete Selected", self)
         delete_action.setShortcut("Delete")
-        delete_action.triggered.connect(self.scene.remove_selected)
+        delete_action.triggered.connect(self._delete_selected)
         toolbar.addAction(delete_action)
 
         toolbar.addSeparator()
@@ -398,9 +410,9 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.detect_rooms_action)
 
         toolbar.addSeparator()
-        preview_3d_action = QAction("3D Preview...", self)
-        preview_3d_action.triggered.connect(self._open_3d_preview)
-        toolbar.addAction(preview_3d_action)
+        self.view_toggle_action = QAction("Switch to 2D Plan", self)
+        self.view_toggle_action.triggered.connect(self._toggle_view_mode)
+        toolbar.addAction(self.view_toggle_action)
 
         toolbar.addSeparator()
         toolbar.addWidget(QLabel(" Units: "))
@@ -423,12 +435,12 @@ class MainWindow(QMainWindow):
 
         self.paste_action = QAction(self)
         self.paste_action.setShortcut("Ctrl+V")
-        self.paste_action.triggered.connect(self.scene.paste)
+        self.paste_action.triggered.connect(self._paste_selection)
         self.addAction(self.paste_action)
 
         self.duplicate_action = QAction(self)
         self.duplicate_action.setShortcut("Ctrl+D")
-        self.duplicate_action.triggered.connect(self.scene.duplicate_selection)
+        self.duplicate_action.triggered.connect(self._duplicate_selection)
         self.addAction(self.duplicate_action)
 
     def _build_floor_bar(self) -> None:
@@ -583,11 +595,56 @@ class MainWindow(QMainWindow):
             self.scene.clear_detected_rooms()
             self.detect_rooms_action.setText("Detect Room Areas")
 
-    def _open_3d_preview(self) -> None:
-        from app.preview_3d import Preview3DDialog
+    def _toggle_view_mode(self) -> None:
+        showing_3d = self.view_stack.currentWidget() is self.view3d
+        if showing_3d:
+            # Leaving 3D: a full rebuild (not just re-syncing existing items'
+            # positions) is required here, since edits made while parked in
+            # 3D -- including undo/redo of an add/delete/duplicate -- can
+            # change which items exist, not just where they are.
+            self._sync_2d_from_floor()
+            self.view_stack.setCurrentWidget(self.view)
+            self.view_toggle_action.setText("Switch to 3D View")
+        else:
+            self._sync_3d_from_floor()
+            self.view_stack.setCurrentWidget(self.view3d)
+            self.view_toggle_action.setText("Switch to 2D Plan")
 
-        dialog = Preview3DDialog(self.scene.floor, self)
-        dialog.exec()
+    def _sync_3d_from_floor(self) -> None:
+        self.scene3d.rebuild_from_floor(self.scene.floor, self.scene.undo_stack)
+
+    def _in_3d_view(self) -> bool:
+        return self.view_stack.currentWidget() is self.view3d
+
+    def _sync_2d_from_floor(self) -> None:
+        # Item count may have changed (add/remove), so a full rebuild is
+        # required here -- unlike the pure move/rotate case in
+        # _toggle_view_mode(), a per-item sync_from_model() pass would leave
+        # deleted items as ghosts or miss newly duplicated ones.
+        self.scene.rebuild_from_floor(self.scene.floor, self.scene.undo_stack)
+
+    def _delete_selected(self) -> None:
+        if self._in_3d_view():
+            self.scene3d.remove_selected()
+            self._sync_2d_from_floor()
+        else:
+            self.scene.remove_selected()
+            self._sync_3d_from_floor()
+
+    def _paste_selection(self) -> None:
+        # Clipboard (from Ctrl+C) is only ever populated from the 2D scene's
+        # selection, so paste always targets the 2D floor data; 3D just
+        # refreshes to show the result.
+        self.scene.paste()
+        self._sync_3d_from_floor()
+
+    def _duplicate_selection(self) -> None:
+        if self._in_3d_view():
+            self.scene3d.duplicate_selected()
+            self._sync_2d_from_floor()
+        else:
+            self.scene.duplicate_selection()
+            self._sync_3d_from_floor()
 
     # -- floors -----------------------------------------------------------
     def _refresh_floor_combo(self) -> None:
@@ -610,6 +667,7 @@ class MainWindow(QMainWindow):
         floor = self.doc.floors[index]
         self.scene.rebuild_from_floor(floor, undo_stack=self._stack_for_floor(floor))
         self.undo_group.setActiveStack(self.scene.undo_stack)
+        self._sync_3d_from_floor()
         self.detect_rooms_action.setChecked(False)
         self.detect_rooms_action.setText("Detect Room Areas")
 
@@ -682,6 +740,7 @@ class MainWindow(QMainWindow):
             return
         center = self.view.mapToScene(self.view.viewport().rect().center())
         self.scene.paste_entries(entries, center)
+        self._sync_3d_from_floor()
         self._set_mode("select")
 
     def _delete_template(self) -> None:
@@ -725,11 +784,13 @@ class MainWindow(QMainWindow):
             color=entry["color"],
             pos=center,
         )
+        self._sync_3d_from_floor()
         self._set_mode("select")
 
     def _add_room_label(self) -> None:
         center = self.view.mapToScene(self.view.viewport().rect().center())
         gfx = self.scene.add_room_label(center)
+        self._sync_3d_from_floor()
         self.scene.clearSelection()
         gfx.setSelected(True)
         self._set_mode("select")
@@ -742,6 +803,8 @@ class MainWindow(QMainWindow):
         floor = self.doc.floors[self.doc.active_floor_index]
         self.scene.rebuild_from_floor(floor, undo_stack=self._stack_for_floor(floor))
         self.undo_group.setActiveStack(self.scene.undo_stack)
+        if hasattr(self, "scene3d"):
+            self._sync_3d_from_floor()
         if hasattr(self, "floor_combo"):
             self._refresh_floor_combo()
         if hasattr(self, "detect_rooms_action"):
