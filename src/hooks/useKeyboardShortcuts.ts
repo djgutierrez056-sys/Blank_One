@@ -34,6 +34,11 @@ export function useKeyboardShortcuts() {
         store.paste();
         return;
       }
+      if (mod && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        store.selectAll();
+        return;
+      }
       if (mod && e.key.toLowerCase() === 'd') {
         e.preventDefault();
         store.duplicateSelected();

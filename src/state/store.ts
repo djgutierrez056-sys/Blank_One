@@ -79,6 +79,7 @@ interface PlannerState extends HistoryState {
   select: (ids: string[]) => void;
   toggleSelect: (id: string, additive: boolean) => void;
   clearSelection: () => void;
+  selectAll: () => void;
   setZoom: (zoom: number) => void;
   setCursorPos: (pos: { x: number; y: number } | null) => void;
   setViewCenter: (pos: { x: number; y: number }) => void;
@@ -228,6 +229,18 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       return { selectedIds: has ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id] };
     }),
   clearSelection: () => set({ selectedIds: [] }),
+  selectAll: () => {
+    const page = getActivePage(get().project);
+    set({
+      tool: 'select',
+      selectedIds: [
+        ...page.rooms.map((r) => r.id),
+        ...page.items.map((i) => i.id),
+        ...page.walls.map((w) => w.id),
+        ...page.texts.map((t) => t.id),
+      ],
+    });
+  },
   setZoom: (zoom) => set({ zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) }),
   setCursorPos: (pos) => set({ cursorPos: pos }),
   setViewCenter: (pos) => set({ viewCenter: pos }),

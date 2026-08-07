@@ -47,6 +47,8 @@ export function Toolbar() {
   const deleteSelected = usePlannerStore((s) => s.deleteSelected);
   const rotateSelected = usePlannerStore((s) => s.rotateSelected);
   const toggleLockSelected = usePlannerStore((s) => s.toggleLockSelected);
+  const selectAll = usePlannerStore((s) => s.selectAll);
+  const clearSelection = usePlannerStore((s) => s.clearSelection);
   const selectedIds = usePlannerStore((s) => s.selectedIds);
   const activePage = usePlannerStore((s) => getActivePage(s.project));
   const collabStatus = usePlannerStore((s) => s.collabStatus);
@@ -62,9 +64,8 @@ export function Toolbar() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSelection = selectedIds.length > 0;
-  const selectedEntities = [...activePage.rooms, ...activePage.items, ...activePage.walls, ...activePage.texts].filter(
-    (e) => selectedIds.includes(e.id)
-  );
+  const allEntities = [...activePage.rooms, ...activePage.items, ...activePage.walls, ...activePage.texts];
+  const selectedEntities = allEntities.filter((e) => selectedIds.includes(e.id));
   const allSelectedLocked = hasSelection && selectedEntities.every((e) => e.locked);
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -90,6 +91,13 @@ export function Toolbar() {
 
       <Button title="Select tool (V)" active={tool === 'select'} onClick={() => setTool('select')}>
         Select
+      </Button>
+      <Button
+        title="Select everything on this page (Ctrl+A)"
+        onClick={hasSelection ? clearSelection : selectAll}
+        disabled={!hasSelection && allEntities.length === 0}
+      >
+        {hasSelection ? 'Deselect' : 'Select All'}
       </Button>
       <Button title="Draw room (click-drag on canvas)" active={tool === 'draw-room'} onClick={() => setTool('draw-room')}>
         + Room
