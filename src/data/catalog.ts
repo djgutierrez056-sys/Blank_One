@@ -12,6 +12,7 @@ export const CATEGORIES = [
   'Bedroom',
   'Kitchen',
   'Bathroom',
+  'Laundry',
   'Office',
   'Outdoor',
   'Doors & Windows',
@@ -67,6 +68,15 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'sink-bath', name: 'Bathroom Sink', category: 'Bathroom', width: 2, height: 1.6, color: '#dfe6e8' },
   { id: 'linen-cabinet', name: 'Linen Cabinet', category: 'Bathroom', width: 2, height: 1.3, color: '#a9835a' },
   { id: 'mirror-bath', name: 'Bathroom Mirror', category: 'Bathroom', width: 2, height: 0.3, color: '#cfe0e8' },
+
+  // Laundry
+  { id: 'washer', name: 'Washer', category: 'Laundry', width: 2.5, height: 2.5, color: '#c5ccd1' },
+  { id: 'dryer', name: 'Dryer', category: 'Laundry', width: 2.5, height: 2.5, color: '#c5ccd1' },
+  { id: 'washer-dryer-stack', name: 'Stacked Washer/Dryer', category: 'Laundry', width: 2.5, height: 2.8, color: '#c5ccd1' },
+  { id: 'utility-sink', name: 'Utility Sink', category: 'Laundry', width: 2, height: 1.6, color: '#b8c4c9' },
+  { id: 'laundry-basket', name: 'Laundry Basket', category: 'Laundry', width: 1.3, height: 1.3, color: '#e2c9a0' },
+  { id: 'ironing-board', name: 'Ironing Board', category: 'Laundry', width: 1.3, height: 4, color: '#8a6a45' },
+  { id: 'folding-table', name: 'Folding Table', category: 'Laundry', width: 3, height: 2, color: '#c9a876' },
 
   // Office
   { id: 'desk', name: 'Desk', category: 'Office', width: 4.5, height: 2.3, color: '#a9835a' },

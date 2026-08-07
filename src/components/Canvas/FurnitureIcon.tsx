@@ -93,6 +93,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'meeting-table':
     case 'console-table':
     case 'kitchen-cart':
+    case 'folding-table':
       return (
         <Group>
           {base}
@@ -142,6 +143,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
       );
     case 'sink-kitchen':
     case 'sink-bath':
+    case 'utility-sink':
       return (
         <Group>
           {base}
@@ -349,6 +351,39 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
           <Line points={[0, height * 0.5, width, height * 0.5]} stroke={stroke} strokeWidth={1.5} />
           <Line points={[0, 0, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1} />
           <Line points={[width, 0, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1} />
+        </Group>
+      );
+    case 'washer':
+    case 'dryer':
+      return (
+        <Group>
+          {base}
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.32} fill="none" stroke={stroke} strokeWidth={1.5} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.2} fill="none" stroke={stroke} strokeWidth={1} />
+          <Circle x={width * 0.18} y={height * 0.15} radius={Math.min(width, height) * 0.05} fill={stroke} />
+        </Group>
+      );
+    case 'washer-dryer-stack':
+      return (
+        <Group>
+          {base}
+          <Circle x={width / 2} y={height * 0.32} radius={Math.min(width, height) * 0.22} fill="none" stroke={stroke} strokeWidth={1.5} />
+          <Circle x={width / 2} y={height * 0.72} radius={Math.min(width, height) * 0.22} fill="none" stroke={stroke} strokeWidth={1.5} />
+        </Group>
+      );
+    case 'laundry-basket':
+      return (
+        <Group>
+          <Ellipse x={width / 2} y={height / 2} radiusX={width * 0.48} radiusY={height * 0.42} fill={color} stroke={stroke} strokeWidth={1.5} />
+          <Line points={[width * 0.2, height * 0.3, width * 0.8, height * 0.3]} stroke={stroke} strokeWidth={1} />
+          <Line points={[width * 0.15, height * 0.55, width * 0.85, height * 0.55]} stroke={stroke} strokeWidth={1} />
+        </Group>
+      );
+    case 'ironing-board':
+      return (
+        <Group>
+          <Rect width={width} height={height * 0.85} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={[width * 0.5, width * 0.5, 4, 4]} />
+          <Rect x={width * 0.3} y={height * 0.85} width={width * 0.4} height={height * 0.15} fill={stroke} cornerRadius={2} />
         </Group>
       );
     default:

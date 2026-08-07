@@ -73,6 +73,7 @@ interface PlannerState extends HistoryState {
   chatMessages: ChatMessage[];
   chatOpen: boolean;
   localBubble: ChatBubble | null;
+  lockedPanelOpen: boolean;
 
   setCanvasSize: (size: { width: number; height: number }) => void;
   setTool: (tool: ToolMode) => void;
@@ -95,6 +96,7 @@ interface PlannerState extends HistoryState {
   setChatOpen: (open: boolean) => void;
   setLocalBubble: (text: string) => void;
   toggleLockSelected: () => void;
+  setLockedPanelOpen: (open: boolean) => void;
 
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
@@ -217,6 +219,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   chatMessages: [],
   chatOpen: false,
   localBubble: null,
+  lockedPanelOpen: false,
 
   setCanvasSize: (size) => set({ canvasSize: size }),
   setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
@@ -309,6 +312,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     }));
     persist(get().project);
   },
+  setLockedPanelOpen: (open) => set({ lockedPanelOpen: open }),
 
   beginChange: () => {
     const { project, past } = get();

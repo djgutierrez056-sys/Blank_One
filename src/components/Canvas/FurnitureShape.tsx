@@ -6,7 +6,6 @@ import { getActivePage, usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
 import { findWallSnap, rectCenter, topLeftFromCenter } from '../../utils/wallSnap';
 import { FurnitureIcon } from './FurnitureIcon';
-import { LockBadge } from './LockBadge';
 
 const WALL_STICKY_TYPES = new Set(['door', 'window']);
 
@@ -113,7 +112,6 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
           listening={false}
         />
       )}
-      {item.locked && <LockBadge width={item.width} height={item.height} />}
     </Group>
   );
 }

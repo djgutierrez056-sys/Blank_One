@@ -54,6 +54,8 @@ export function Toolbar() {
   const collabStatus = usePlannerStore((s) => s.collabStatus);
   const chatOpen = usePlannerStore((s) => s.chatOpen);
   const setChatOpen = usePlannerStore((s) => s.setChatOpen);
+  const lockedPanelOpen = usePlannerStore((s) => s.lockedPanelOpen);
+  const setLockedPanelOpen = usePlannerStore((s) => s.setLockedPanelOpen);
   const project = usePlannerStore((s) => s.project);
   const setProject = usePlannerStore((s) => s.setProject);
   const newProject = usePlannerStore((s) => s.newProject);
@@ -67,6 +69,7 @@ export function Toolbar() {
   const allEntities = [...activePage.rooms, ...activePage.items, ...activePage.walls, ...activePage.texts];
   const selectedEntities = allEntities.filter((e) => selectedIds.includes(e.id));
   const allSelectedLocked = hasSelection && selectedEntities.every((e) => e.locked);
+  const lockedCount = allEntities.filter((e) => e.locked).length;
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -140,6 +143,14 @@ export function Toolbar() {
         disabled={!hasSelection}
       >
         {allSelectedLocked ? 'Unlock' : 'Lock'}
+      </Button>
+      <Button
+        title="Show what's locked on this page"
+        active={lockedPanelOpen}
+        onClick={() => setLockedPanelOpen(!lockedPanelOpen)}
+        disabled={lockedCount === 0 && !lockedPanelOpen}
+      >
+        🔒 {lockedCount}
       </Button>
       <Divider />
 

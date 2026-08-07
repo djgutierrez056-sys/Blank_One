@@ -10,12 +10,43 @@ import { snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
 import { broadcastCursor } from '../../lib/collab';
 import { ChatPanel } from '../Toolbar/ChatPanel';
+import { LockedItemsPanel } from '../Toolbar/LockedItemsPanel';
 
 const WALL_THICKNESS = 6;
 const ZOOM_STEP = 1.15;
 
 const GRID_COLOR = '#e3e6ec';
 const GRID_COLOR_MAJOR = '#cdd2db';
+
+interface Bounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function entityBounds(e: { x: number; y: number; width: number; height: number; rotation: number; kind: string }): Bounds {
+  const rad = (e.rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  // Walls are drawn centered on their y-axis (a line with thickness), everything
+  // else is drawn from a top-left origin.
+  const yTop = e.kind === 'wall' ? -e.height / 2 : 0;
+  const yBottom = e.kind === 'wall' ? e.height / 2 : e.height;
+  const corners = [
+    { x: 0, y: yTop },
+    { x: e.width, y: yTop },
+    { x: e.width, y: yBottom },
+    { x: 0, y: yBottom },
+  ].map((c) => ({ x: e.x + c.x * cos - c.y * sin, y: e.y + c.x * sin + c.y * cos }));
+  const xs = corners.map((c) => c.x);
+  const ys = corners.map((c) => c.y);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+}
+
+function boundsIntersect(a: Bounds, b: Bounds): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
 
 export function PlanCanvas() {
   const project = usePlannerStore((s) => s.project);
@@ -44,6 +75,7 @@ export function PlanCanvas() {
   const stageRef = useRef<Konva.Stage>(null);
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Map<string, Konva.Node>>(new Map());
+  const justMarqueeSelectedRef = useRef(false);
 
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -51,6 +83,9 @@ export function PlanCanvas() {
   const [drawRect, setDrawRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [wallEnd, setWallEnd] = useState<{ x: number; y: number } | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [spacePressed, setSpacePressed] = useState(false);
+  const [selectStart, setSelectStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectRect, setSelectRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const gridSnapPx = project.gridSnap * project.scale;
 
@@ -69,6 +104,30 @@ export function PlanCanvas() {
     window.addEventListener('resize', updateSize);
     return () => window.removeEventListener('resize', updateSize);
   }, [setCanvasSize]);
+
+  // Hold Space to pan by dragging (like most design tools); otherwise a
+  // left-drag on empty canvas draws a marquee selection instead.
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      const el = target as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.code === 'Space' && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        setSpacePressed(true);
+      }
+    }
+    function onKeyUp(e: KeyboardEvent) {
+      if (e.code === 'Space') setSpacePressed(false);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, []);
 
   // Keep the store's notion of "visible center" (used for catalog click-to-add)
   // in sync with the current pan/zoom.
@@ -139,7 +198,7 @@ export function PlanCanvas() {
     setPan({ x: 0, y: 0 });
   }
 
-  function handleMouseDown() {
+  function handleMouseDown(e: Konva.KonvaEventObject<MouseEvent>) {
     if (tool === 'draw-room') {
       const pos = stagePos();
       if (!pos) return;
@@ -166,10 +225,21 @@ export function PlanCanvas() {
       // cycle fully finishes — Konva can steal focus back on the same
       // gesture, which would immediately blur (and close) the editor.
       setTimeout(() => setEditingTextId(id), 0);
+      return;
+    }
+    if (tool === 'select' && !spacePressed && e.target === stageRef.current) {
+      const pos = stagePos();
+      if (!pos) return;
+      setSelectStart(pos);
+      setSelectRect({ x: pos.x, y: pos.y, w: 0, h: 0 });
     }
   }
 
   function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
+    if (justMarqueeSelectedRef.current) {
+      justMarqueeSelectedRef.current = false;
+      return;
+    }
     if (tool === 'select' && e.target === stageRef.current && !editingTextId) {
       clearSelection();
     }
@@ -196,10 +266,46 @@ export function PlanCanvas() {
       if (!pos) return;
       const pointSnap = findPointSnap(activePage, pos.x, pos.y);
       setWallEnd(pointSnap ?? pos);
+      return;
+    }
+    if (selectStart) {
+      if (!pos) return;
+      setSelectRect({
+        x: Math.min(selectStart.x, pos.x),
+        y: Math.min(selectStart.y, pos.y),
+        w: Math.abs(pos.x - selectStart.x),
+        h: Math.abs(pos.y - selectStart.y),
+      });
     }
   }
 
-  function handleMouseUp() {
+  function handleMouseUp(e: Konva.KonvaEventObject<MouseEvent>) {
+    if (selectStart && selectRect) {
+      if (selectRect.w > 3 || selectRect.h > 3) {
+        const marquee: Bounds = {
+          minX: selectRect.x,
+          minY: selectRect.y,
+          maxX: selectRect.x + selectRect.w,
+          maxY: selectRect.y + selectRect.h,
+        };
+        const hits = [
+          ...activePage.rooms,
+          ...activePage.walls,
+          ...activePage.items,
+          ...activePage.texts,
+        ].filter((entity) => boundsIntersect(marquee, entityBounds(entity)));
+        const hitIds = hits.map((h) => h.id);
+        if (e.evt.shiftKey) {
+          select([...new Set([...selectedIds, ...hitIds])]);
+        } else {
+          select(hitIds);
+        }
+        justMarqueeSelectedRef.current = true;
+      }
+      setSelectStart(null);
+      setSelectRect(null);
+      return;
+    }
     if (tool === 'draw-room' && drawStart && drawRect) {
       if (drawRect.w > 15 && drawRect.h > 15) {
         const id = addRoom({
@@ -304,7 +410,7 @@ export function PlanCanvas() {
         y={pan.y}
         scaleX={zoom}
         scaleY={zoom}
-        draggable={tool === 'select'}
+        draggable={spacePressed}
         onDragMove={(e) => {
           if (e.target === stageRef.current) setPan({ x: e.target.x(), y: e.target.y() });
         }}
@@ -313,7 +419,13 @@ export function PlanCanvas() {
         onMouseUp={handleMouseUp}
         onClick={handleStageClick}
         onWheel={handleWheel}
-        style={{ cursor: tool === 'draw-room' || tool === 'draw-wall' || tool === 'place-text' ? 'crosshair' : 'default' }}
+        style={{
+          cursor: spacePressed
+            ? 'grab'
+            : tool === 'draw-room' || tool === 'draw-wall' || tool === 'place-text'
+              ? 'crosshair'
+              : 'default',
+        }}
       >
         <Layer listening={false}>{gridLines}</Layer>
         <Layer>
@@ -377,6 +489,19 @@ export function PlanCanvas() {
               stroke="#4f7cff"
               dash={[6, 4]}
               fill="rgba(79,124,255,0.08)"
+            />
+          )}
+          {selectRect && (
+            <Rect
+              x={selectRect.x}
+              y={selectRect.y}
+              width={selectRect.w}
+              height={selectRect.h}
+              stroke="#4f7cff"
+              strokeWidth={1 / zoom}
+              dash={[4 / zoom, 3 / zoom]}
+              fill="rgba(79,124,255,0.1)"
+              listening={false}
             />
           )}
           {tool === 'draw-wall' && drawStart && wallEnd && (
@@ -455,6 +580,7 @@ export function PlanCanvas() {
       </div>
 
       <ChatPanel />
+      <LockedItemsPanel />
 
       {editingText && (
         <textarea
