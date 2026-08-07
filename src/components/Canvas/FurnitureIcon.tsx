@@ -418,21 +418,72 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
         </Group>
       );
     case 'motorcycle':
-    case 'dirt-bike':
+    case 'dirt-bike': {
+      const r = height * 0.42;
+      const rearX = width * 0.18;
+      const frontX = width * 0.82;
+      const wheelY = height * 0.58;
+      const topY = height * 0.12;
+      const knobby = catalogId === 'dirt-bike';
       return (
         <Group>
-          <Circle x={width * 0.18} y={height / 2} radius={height * 0.42} fill="none" stroke={stroke} strokeWidth={2} />
-          <Circle x={width * 0.82} y={height / 2} radius={height * 0.42} fill="none" stroke={stroke} strokeWidth={2} />
+          {/* wheels with hub */}
+          <Circle x={rearX} y={wheelY} radius={r} fill="none" stroke={stroke} strokeWidth={2} dash={knobby ? [2, 1.5] : undefined} />
+          <Circle x={rearX} y={wheelY} radius={r * 0.32} fill="none" stroke={stroke} strokeWidth={1} />
+          <Circle x={frontX} y={wheelY} radius={r} fill="none" stroke={stroke} strokeWidth={2} dash={knobby ? [2, 1.5] : undefined} />
+          <Circle x={frontX} y={wheelY} radius={r * 0.32} fill="none" stroke={stroke} strokeWidth={1} />
+          {/* lower frame / engine cradle */}
           <Line
-            points={[width * 0.18, height / 2, width * 0.45, height * 0.25, width * 0.82, height / 2]}
-            stroke={color}
-            strokeWidth={3}
+            points={[rearX, wheelY, width * 0.4, wheelY * 0.8, frontX, wheelY]}
+            stroke={stroke}
+            strokeWidth={2}
+            lineCap="round"
+            lineJoin="round"
+          />
+          {/* engine block */}
+          <Rect
+            x={width * 0.38}
+            y={wheelY - height * 0.14}
+            width={width * 0.12}
+            height={height * 0.2}
+            fill={darken(color, 0.35)}
+            stroke={stroke}
+            strokeWidth={1}
+            cornerRadius={1}
+          />
+          {/* fuel tank */}
+          <Rect
+            x={width * 0.34}
+            y={topY}
+            width={width * 0.26}
+            height={height * 0.22}
+            fill={color}
+            stroke={stroke}
+            strokeWidth={1}
+            cornerRadius={height * 0.1}
+          />
+          {/* seat, running back toward the rear wheel */}
+          <Line
+            points={[width * 0.34, topY + height * 0.02, rearX + r * 0.4, topY + height * 0.08]}
+            stroke={darken(color, 0.3)}
+            strokeWidth={height * 0.16}
             lineCap="round"
           />
-          <Line points={[width * 0.45, height * 0.25, width * 0.45, height * 0.7]} stroke={color} strokeWidth={3} lineCap="round" />
-          <Line points={[width * 0.18, height / 2, width * 0.05, height * 0.15]} stroke={stroke} strokeWidth={2} lineCap="round" />
+          {/* backbone frame from tank down to rear axle */}
+          <Line points={[width * 0.36, topY + height * 0.16, rearX, wheelY]} stroke={stroke} strokeWidth={1.5} />
+          {/* front forks up to the handlebar */}
+          <Line points={[frontX, wheelY, frontX - width * 0.06, topY - height * 0.02]} stroke={stroke} strokeWidth={2.5} />
+          <Line
+            points={[frontX - width * 0.15, topY - height * 0.02, frontX + width * 0.03, topY - height * 0.02]}
+            stroke={stroke}
+            strokeWidth={2}
+            lineCap="round"
+          />
+          {/* headlight */}
+          <Circle x={frontX + width * 0.02} y={topY + height * 0.06} radius={height * 0.09} fill={stroke} />
         </Group>
       );
+    }
     case 'scooter':
     case 'bicycle':
       return (
