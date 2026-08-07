@@ -395,6 +395,59 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
           <Rect x={width * 0.3} y={height * 0.85} width={width * 0.4} height={height * 0.15} fill={stroke} cornerRadius={2} />
         </Group>
       );
+    case 'car':
+    case 'suv':
+      return (
+        <Group>
+          <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={height * 0.35} />
+          <Rect
+            x={width * 0.22}
+            y={height * 0.12}
+            width={width * 0.56}
+            height={height * 0.76}
+            fill={darken(color, 0.25)}
+            stroke={stroke}
+            strokeWidth={1}
+            cornerRadius={height * 0.25}
+          />
+          <Line points={[width * 0.5, height * 0.12, width * 0.5, height * 0.88]} stroke={stroke} strokeWidth={1} />
+          <Circle x={width * 0.2} y={0} radius={height * 0.14} fill={stroke} />
+          <Circle x={width * 0.2} y={height} radius={height * 0.14} fill={stroke} />
+          <Circle x={width * 0.8} y={0} radius={height * 0.14} fill={stroke} />
+          <Circle x={width * 0.8} y={height} radius={height * 0.14} fill={stroke} />
+        </Group>
+      );
+    case 'motorcycle':
+    case 'dirt-bike':
+      return (
+        <Group>
+          <Circle x={width * 0.18} y={height / 2} radius={height * 0.42} fill="none" stroke={stroke} strokeWidth={2} />
+          <Circle x={width * 0.82} y={height / 2} radius={height * 0.42} fill="none" stroke={stroke} strokeWidth={2} />
+          <Line
+            points={[width * 0.18, height / 2, width * 0.45, height * 0.25, width * 0.82, height / 2]}
+            stroke={color}
+            strokeWidth={3}
+            lineCap="round"
+          />
+          <Line points={[width * 0.45, height * 0.25, width * 0.45, height * 0.7]} stroke={color} strokeWidth={3} lineCap="round" />
+          <Line points={[width * 0.18, height / 2, width * 0.05, height * 0.15]} stroke={stroke} strokeWidth={2} lineCap="round" />
+        </Group>
+      );
+    case 'scooter':
+    case 'bicycle':
+      return (
+        <Group>
+          <Circle x={width * 0.16} y={height / 2} radius={height * 0.4} fill="none" stroke={stroke} strokeWidth={1.5} />
+          <Circle x={width * 0.84} y={height / 2} radius={height * 0.4} fill="none" stroke={stroke} strokeWidth={1.5} />
+          <Line
+            points={[width * 0.16, height / 2, width * 0.5, height * 0.3, width * 0.84, height / 2]}
+            stroke={color}
+            strokeWidth={2}
+            lineCap="round"
+          />
+          <Line points={[width * 0.5, height * 0.3, width * 0.5, height * 0.65]} stroke={color} strokeWidth={2} lineCap="round" />
+        </Group>
+      );
     default:
       return base;
   }

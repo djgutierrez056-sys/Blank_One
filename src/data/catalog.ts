@@ -15,6 +15,7 @@ export const CATEGORIES = [
   'Laundry',
   'Office',
   'Outdoor',
+  'Vehicles',
   'Doors & Windows',
 ] as const;
 
@@ -101,6 +102,14 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'pool', name: 'Pool', category: 'Outdoor', width: 10, height: 6, color: '#5eb0c9' },
   { id: 'trampoline', name: 'Trampoline', category: 'Outdoor', width: 5, height: 5, color: '#4a4a4a' },
   { id: 'shed', name: 'Shed', category: 'Outdoor', width: 6, height: 5, color: '#8a6a45' },
+
+  // Vehicles
+  { id: 'car', name: 'Car', category: 'Vehicles', width: 15, height: 6.5, color: '#7a8794' },
+  { id: 'suv', name: 'SUV / Truck', category: 'Vehicles', width: 17, height: 7, color: '#5c6773' },
+  { id: 'motorcycle', name: 'Motorcycle', category: 'Vehicles', width: 7, height: 2.5, color: '#3a3a3a' },
+  { id: 'dirt-bike', name: 'Dirt Bike', category: 'Vehicles', width: 6.5, height: 2, color: '#c9622a' },
+  { id: 'scooter', name: 'Scooter', category: 'Vehicles', width: 5, height: 1.8, color: '#e0b23a' },
+  { id: 'bicycle', name: 'Bicycle', category: 'Vehicles', width: 5.5, height: 1.8, color: '#4a90a4' },
 
   // Doors & Windows
   { id: 'door', name: 'Door', category: 'Doors & Windows', width: 3, height: 0.5, color: '#8a6a45' },
