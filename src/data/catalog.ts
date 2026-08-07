@@ -43,7 +43,8 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'wardrobe', name: 'Wardrobe', category: 'Bedroom', width: 4, height: 2, color: '#8a6a45' },
   { id: 'vanity', name: 'Vanity', category: 'Bedroom', width: 3.3, height: 1.6, color: '#a9835a' },
   { id: 'crib', name: 'Crib', category: 'Bedroom', width: 3, height: 4.3, color: '#c98fa6' },
-  { id: 'mirror', name: 'Mirror', category: 'Bedroom', width: 2.3, height: 0.3, color: '#cfe0e8' },
+  { id: 'mirror', name: 'Wall Mirror', category: 'Bedroom', width: 2.3, height: 0.3, color: '#cfe0e8' },
+  { id: 'floor-mirror', name: 'Floor Mirror', category: 'Bedroom', width: 1.6, height: 0.5, color: '#cfe0e8' },
 
   // Kitchen
   { id: 'fridge', name: 'Refrigerator', category: 'Kitchen', width: 3, height: 2.8, color: '#b8c4c9' },
@@ -65,6 +66,7 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'shower', name: 'Shower', category: 'Bathroom', width: 3, height: 3, color: '#cdd8db' },
   { id: 'sink-bath', name: 'Bathroom Sink', category: 'Bathroom', width: 2, height: 1.6, color: '#dfe6e8' },
   { id: 'linen-cabinet', name: 'Linen Cabinet', category: 'Bathroom', width: 2, height: 1.3, color: '#a9835a' },
+  { id: 'mirror-bath', name: 'Bathroom Mirror', category: 'Bathroom', width: 2, height: 0.3, color: '#cfe0e8' },
 
   // Office
   { id: 'desk', name: 'Desk', category: 'Office', width: 4.5, height: 2.3, color: '#a9835a' },

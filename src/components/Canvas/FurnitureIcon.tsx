@@ -295,11 +295,25 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
         </Group>
       );
     case 'whiteboard':
-    case 'mirror':
       return (
         <Group>
           <Rect width={width} height={height} fill="#ffffff" stroke={stroke} strokeWidth={1.5} />
           <Line points={[0, height, width, height]} stroke={stroke} strokeWidth={1} />
+        </Group>
+      );
+    case 'mirror':
+    case 'mirror-bath':
+      return (
+        <Group>
+          <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={2} cornerRadius={2} />
+          <Line points={[width * 0.15, height, width * 0.4, 0]} stroke="#ffffff" strokeWidth={Math.max(1, height * 0.3)} opacity={0.55} />
+        </Group>
+      );
+    case 'floor-mirror':
+      return (
+        <Group>
+          <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={2} cornerRadius={width * 0.3} />
+          <Line points={[width * 0.15, height * 0.85, width * 0.45, height * 0.15]} stroke="#ffffff" strokeWidth={Math.max(1, width * 0.12)} opacity={0.55} />
         </Group>
       );
     case 'coat-rack':
