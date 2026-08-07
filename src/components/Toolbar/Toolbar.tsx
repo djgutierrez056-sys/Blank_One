@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { usePlannerStore } from '../../state/store';
+import { getActivePage, usePlannerStore } from '../../state/store';
 import { exportProject, importProjectFile } from '../../utils/persistence';
 import { ShareButton } from './ShareButton';
 
@@ -46,7 +46,12 @@ export function Toolbar() {
   const duplicateSelected = usePlannerStore((s) => s.duplicateSelected);
   const deleteSelected = usePlannerStore((s) => s.deleteSelected);
   const rotateSelected = usePlannerStore((s) => s.rotateSelected);
+  const toggleLockSelected = usePlannerStore((s) => s.toggleLockSelected);
   const selectedIds = usePlannerStore((s) => s.selectedIds);
+  const activePage = usePlannerStore((s) => getActivePage(s.project));
+  const collabStatus = usePlannerStore((s) => s.collabStatus);
+  const chatOpen = usePlannerStore((s) => s.chatOpen);
+  const setChatOpen = usePlannerStore((s) => s.setChatOpen);
   const project = usePlannerStore((s) => s.project);
   const setProject = usePlannerStore((s) => s.setProject);
   const newProject = usePlannerStore((s) => s.newProject);
@@ -57,6 +62,10 @@ export function Toolbar() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const hasSelection = selectedIds.length > 0;
+  const selectedEntities = [...activePage.rooms, ...activePage.items, ...activePage.walls, ...activePage.texts].filter(
+    (e) => selectedIds.includes(e.id)
+  );
+  const allSelectedLocked = hasSelection && selectedEntities.every((e) => e.locked);
 
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -116,6 +125,14 @@ export function Toolbar() {
       <Button title="Delete (Del)" onClick={deleteSelected} disabled={!hasSelection}>
         Delete
       </Button>
+      <Button
+        title={allSelectedLocked ? 'Unlock selection (Ctrl+L)' : 'Lock selection so it can\'t be moved (Ctrl+L)'}
+        active={allSelectedLocked}
+        onClick={toggleLockSelected}
+        disabled={!hasSelection}
+      >
+        {allSelectedLocked ? 'Unlock' : 'Lock'}
+      </Button>
       <Divider />
 
       <label className="flex items-center gap-1 text-xs text-slate-500">
@@ -143,6 +160,11 @@ export function Toolbar() {
       <div className="flex-1" />
 
       <ShareButton />
+      {collabStatus === 'connected' && (
+        <Button title="Toggle chat" active={chatOpen} onClick={() => setChatOpen(!chatOpen)}>
+          Chat
+        </Button>
+      )}
       <Divider />
 
       <Button

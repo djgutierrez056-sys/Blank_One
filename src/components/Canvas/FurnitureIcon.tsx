@@ -37,6 +37,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
       );
     case 'armchair':
     case 'lounge-chair':
+    case 'recliner':
       return (
         <Group>
           {base}
@@ -57,6 +58,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'bed-king':
     case 'bed-queen':
     case 'bed-twin':
+    case 'crib':
       return (
         <Group>
           {base}
@@ -73,6 +75,8 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'vanity':
     case 'pantry':
     case 'linen-cabinet':
+    case 'wine-rack':
+    case 'safe':
       return (
         <Group>
           {base}
@@ -87,6 +91,8 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'island':
     case 'side-table':
     case 'meeting-table':
+    case 'console-table':
+    case 'kitchen-cart':
       return (
         <Group>
           {base}
@@ -117,6 +123,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'fridge':
     case 'microwave':
     case 'dishwasher':
+    case 'printer':
       return (
         <Group>
           {base}
@@ -288,10 +295,46 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
         </Group>
       );
     case 'whiteboard':
+    case 'mirror':
       return (
         <Group>
           <Rect width={width} height={height} fill="#ffffff" stroke={stroke} strokeWidth={1.5} />
           <Line points={[0, height, width, height]} stroke={stroke} strokeWidth={1} />
+        </Group>
+      );
+    case 'coat-rack':
+      return (
+        <Group>
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.08} fill={stroke} />
+          <Line points={[width * 0.2, height * 0.3, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1.5} />
+          <Line points={[width * 0.8, height * 0.3, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1.5} />
+          <Line points={[width * 0.5, height * 0.5, width * 0.5, height * 0.9]} stroke={stroke} strokeWidth={1.5} />
+        </Group>
+      );
+    case 'pool':
+      return (
+        <Group>
+          <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={2} cornerRadius={8} />
+          <Line points={[width * 0.1, height * 0.3, width * 0.9, height * 0.3]} stroke="#ffffff" strokeWidth={1.5} opacity={0.6} tension={0.6} />
+          <Line points={[width * 0.1, height * 0.55, width * 0.9, height * 0.55]} stroke="#ffffff" strokeWidth={1.5} opacity={0.6} tension={0.6} />
+          <Line points={[width * 0.1, height * 0.8, width * 0.9, height * 0.8]} stroke="#ffffff" strokeWidth={1.5} opacity={0.6} tension={0.6} />
+        </Group>
+      );
+    case 'trampoline':
+      return (
+        <Group>
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) / 2} fill={color} stroke={stroke} strokeWidth={2} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.36} fill="none" stroke={darken(color, 0.1)} strokeWidth={1} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.2} fill="none" stroke={darken(color, 0.1)} strokeWidth={1} />
+        </Group>
+      );
+    case 'shed':
+      return (
+        <Group>
+          {base}
+          <Line points={[0, height * 0.5, width, height * 0.5]} stroke={stroke} strokeWidth={1.5} />
+          <Line points={[0, 0, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1} />
+          <Line points={[width, 0, width * 0.5, height * 0.5]} stroke={stroke} strokeWidth={1} />
         </Group>
       );
     default:

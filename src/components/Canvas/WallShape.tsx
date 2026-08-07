@@ -5,6 +5,7 @@ import type { Wall } from '../../state/types';
 import { getActivePage, usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
+import { LockBadge } from './LockBadge';
 
 interface Props {
   wall: Wall;
@@ -30,7 +31,7 @@ export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef,
       x={wall.x}
       y={wall.y}
       rotation={wall.rotation}
-      draggable={toolMode === 'select'}
+      draggable={toolMode === 'select' && !wall.locked}
       onClick={(e) => onSelect(wall.id, e.evt.shiftKey)}
       onTap={() => onSelect(wall.id, false)}
       onDragStart={() => beginChange()}
@@ -85,6 +86,7 @@ export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef,
         strokeWidth={isSelected ? 2 : 0}
         cornerRadius={1}
       />
+      {wall.locked && <LockBadge width={wall.width} height={wall.height} x={2} y={-wall.height / 2 - 12} />}
     </Group>
   );
 }

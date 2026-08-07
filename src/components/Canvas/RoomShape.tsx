@@ -4,6 +4,7 @@ import { Group, Label as KLabel, Rect, Tag, Text } from 'react-konva';
 import type { Room } from '../../state/types';
 import { usePlannerStore } from '../../state/store';
 import { snapValue } from '../../utils/geometry';
+import { LockBadge } from './LockBadge';
 
 interface Props {
   room: Room;
@@ -31,7 +32,7 @@ export function RoomShape({ room, isSelected, gridSnapPx, showLabels, onSelect, 
       x={room.x}
       y={room.y}
       rotation={room.rotation}
-      draggable={toolMode === 'select'}
+      draggable={toolMode === 'select' && !room.locked}
       onClick={(e) => onSelect(room.id, e.evt.shiftKey)}
       onTap={() => onSelect(room.id, false)}
       onDragStart={() => beginChange()}
@@ -69,6 +70,7 @@ export function RoomShape({ room, isSelected, gridSnapPx, showLabels, onSelect, 
         fillEnabled={false}
         listening={false}
       />
+      {room.locked && <LockBadge width={room.width} height={room.height} />}
       {showLabels && room.label && (
         <KLabel
           x={room.labelX}

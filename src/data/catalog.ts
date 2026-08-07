@@ -30,6 +30,9 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'rug', name: 'Rug', category: 'Living Room', width: 6, height: 4, color: '#e2c9a0' },
   { id: 'bookshelf', name: 'Bookshelf', category: 'Living Room', width: 3, height: 1, color: '#a9835a' },
   { id: 'floor-lamp', name: 'Floor Lamp', category: 'Living Room', width: 1.3, height: 1.3, color: '#e8d9a0' },
+  { id: 'recliner', name: 'Recliner', category: 'Living Room', width: 3, height: 3.3, color: '#a7c4e0' },
+  { id: 'console-table', name: 'Console Table', category: 'Living Room', width: 4, height: 1.3, color: '#c9a876' },
+  { id: 'coat-rack', name: 'Coat Rack', category: 'Living Room', width: 1.3, height: 1.3, color: '#8a6a45' },
 
   // Bedroom
   { id: 'bed-king', name: 'King Bed', category: 'Bedroom', width: 6.3, height: 6.6, color: '#c98fa6' },
@@ -39,6 +42,8 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'dresser', name: 'Dresser', category: 'Bedroom', width: 4, height: 1.6, color: '#a9835a' },
   { id: 'wardrobe', name: 'Wardrobe', category: 'Bedroom', width: 4, height: 2, color: '#8a6a45' },
   { id: 'vanity', name: 'Vanity', category: 'Bedroom', width: 3.3, height: 1.6, color: '#a9835a' },
+  { id: 'crib', name: 'Crib', category: 'Bedroom', width: 3, height: 4.3, color: '#c98fa6' },
+  { id: 'mirror', name: 'Mirror', category: 'Bedroom', width: 2.3, height: 0.3, color: '#cfe0e8' },
 
   // Kitchen
   { id: 'fridge', name: 'Refrigerator', category: 'Kitchen', width: 3, height: 2.8, color: '#b8c4c9' },
@@ -51,6 +56,8 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'dining-table', name: 'Dining Table', category: 'Kitchen', width: 5, height: 3.3, color: '#c9a876' },
   { id: 'dining-chair', name: 'Dining Chair', category: 'Kitchen', width: 1.6, height: 1.6, color: '#a9835a' },
   { id: 'bar-stool', name: 'Bar Stool', category: 'Kitchen', width: 1.3, height: 1.3, color: '#5c5c5c' },
+  { id: 'wine-rack', name: 'Wine Rack', category: 'Kitchen', width: 1.6, height: 1, color: '#8a6a45' },
+  { id: 'kitchen-cart', name: 'Kitchen Cart', category: 'Kitchen', width: 3, height: 1.8, color: '#c9a876' },
 
   // Bathroom
   { id: 'toilet', name: 'Toilet', category: 'Bathroom', width: 1.6, height: 2.3, color: '#dfe6e8' },
@@ -65,6 +72,8 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'filing-cabinet', name: 'Filing Cabinet', category: 'Office', width: 1.6, height: 1.6, color: '#6b6b6b' },
   { id: 'meeting-table', name: 'Meeting Table', category: 'Office', width: 6, height: 3, color: '#c9a876' },
   { id: 'whiteboard', name: 'Whiteboard', category: 'Office', width: 4, height: 0.3, color: '#f5f5f0' },
+  { id: 'printer', name: 'Printer', category: 'Office', width: 1.6, height: 1.3, color: '#8f8f8f' },
+  { id: 'safe', name: 'Safe', category: 'Office', width: 1.6, height: 1.6, color: '#5c5c5c' },
 
   // Outdoor
   { id: 'patio-table', name: 'Patio Table', category: 'Outdoor', width: 3.5, height: 3.5, color: '#7a9e7e' },
@@ -75,6 +84,9 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'plant', name: 'Plant', category: 'Outdoor', width: 1.6, height: 1.6, color: '#5f8f5a' },
   { id: 'bench', name: 'Bench', category: 'Outdoor', width: 4.5, height: 1.5, color: '#8a6a45' },
   { id: 'fence', name: 'Fence', category: 'Outdoor', width: 8, height: 0.4, color: '#9c8462' },
+  { id: 'pool', name: 'Pool', category: 'Outdoor', width: 10, height: 6, color: '#5eb0c9' },
+  { id: 'trampoline', name: 'Trampoline', category: 'Outdoor', width: 5, height: 5, color: '#4a4a4a' },
+  { id: 'shed', name: 'Shed', category: 'Outdoor', width: 6, height: 5, color: '#8a6a45' },
 
   // Doors & Windows
   { id: 'door', name: 'Door', category: 'Doors & Windows', width: 3, height: 0.5, color: '#8a6a45' },

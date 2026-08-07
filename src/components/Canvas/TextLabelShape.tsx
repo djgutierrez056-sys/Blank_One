@@ -36,7 +36,7 @@ export function TextLabelShape({ textLabel, isSelected, isEditing, gridSnapPx, o
       fontFamily="system-ui"
       fill={textLabel.color}
       visible={!isEditing}
-      draggable={toolMode === 'select'}
+      draggable={toolMode === 'select' && !textLabel.locked}
       stroke={isSelected ? '#4f7cff' : undefined}
       strokeWidth={isSelected ? 0.6 : 0}
       onClick={(e) => onSelect(textLabel.id, e.evt.shiftKey)}

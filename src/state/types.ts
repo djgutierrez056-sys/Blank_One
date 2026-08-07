@@ -11,6 +11,7 @@ export interface Room {
   labelY: number;
   fill: string;
   wallThickness: number;
+  locked?: boolean;
 }
 
 export interface FurnitureItem {
@@ -26,6 +27,7 @@ export interface FurnitureItem {
   label: string;
   flipped?: boolean; // for doors: which side of the wall it swings into
   flippedX?: boolean; // for doors: which side of the opening the hinge is on
+  locked?: boolean;
 }
 
 export interface Wall {
@@ -38,6 +40,7 @@ export interface Wall {
   rotation: number;
   color: string;
   label: string;
+  locked?: boolean;
 }
 
 export interface TextLabel {
@@ -52,6 +55,7 @@ export interface TextLabel {
   fontSize: number;
   color: string;
   label: string; // unused for text, kept so it satisfies the shared Entity fields
+  locked?: boolean;
 }
 
 export type Entity = Room | FurnitureItem | Wall | TextLabel;
@@ -75,3 +79,12 @@ export interface Project {
 }
 
 export type ToolMode = 'select' | 'draw-room' | 'draw-wall' | 'place-text';
+
+export interface ChatMessage {
+  id: string;
+  clientId: string;
+  name: string;
+  color: string;
+  text: string;
+  ts: number;
+}

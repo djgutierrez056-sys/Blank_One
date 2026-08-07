@@ -54,6 +54,11 @@ export function useKeyboardShortcuts() {
         store.setZoom(1);
         return;
       }
+      if (mod && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        store.toggleLockSelected();
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         store.deleteSelected();

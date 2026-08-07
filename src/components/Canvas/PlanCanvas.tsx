@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
-import { Circle, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
+import { Circle, Label as KLabel, Layer, Line, Rect, Stage, Tag, Text, Transformer } from 'react-konva';
 import { getActivePage, MAX_ZOOM, MIN_ZOOM, usePlannerStore } from '../../state/store';
 import { RoomShape } from './RoomShape';
 import { FurnitureShape } from './FurnitureShape';
@@ -9,6 +9,7 @@ import { TextLabelShape } from './TextLabelShape';
 import { snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
 import { broadcastCursor } from '../../lib/collab';
+import { ChatPanel } from '../Toolbar/ChatPanel';
 
 const WALL_THICKNESS = 6;
 const ZOOM_STEP = 1.15;
@@ -36,6 +37,8 @@ export function PlanCanvas() {
   const setCursorPos = usePlannerStore((s) => s.setCursorPos);
   const setViewCenter = usePlannerStore((s) => s.setViewCenter);
   const remoteCursors = usePlannerStore((s) => s.remoteCursors);
+  const localBubble = usePlannerStore((s) => s.localBubble);
+  const cursorPos = usePlannerStore((s) => s.cursorPos);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -79,12 +82,19 @@ export function PlanCanvas() {
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
+    const lockedIds = new Set([
+      ...activePage.rooms.filter((r) => r.locked).map((r) => r.id),
+      ...activePage.items.filter((i) => i.locked).map((i) => i.id),
+      ...activePage.walls.filter((w) => w.locked).map((w) => w.id),
+      ...activePage.texts.filter((t) => t.locked).map((t) => t.id),
+    ]);
     const nodes = selectedIds
+      .filter((id) => !lockedIds.has(id))
       .map((id) => nodeRefs.current.get(id))
       .filter((n): n is Konva.Node => Boolean(n));
     tr.nodes(tool === 'select' ? nodes : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedIds, project, tool]);
+  }, [selectedIds, project, tool, activePage]);
 
   function registerRef(id: string, node: Konva.Node | null) {
     if (node) nodeRefs.current.set(id, node);
@@ -393,6 +403,21 @@ export function PlanCanvas() {
           {Object.entries(remoteCursors).map(([id, cursor]) => (
             <Circle key={`dot-${id}`} x={cursor.x} y={cursor.y} radius={3 / zoom} fill={cursor.color} listening={false} />
           ))}
+          {Object.entries(remoteCursors).map(
+            ([id, cursor]) =>
+              cursor.bubble && (
+                <KLabel key={`bubble-${id}`} x={cursor.x} y={cursor.y - 18 / zoom} listening={false}>
+                  <Tag fill={cursor.color} cornerRadius={5 / zoom} pointerDirection="down" pointerWidth={6 / zoom} pointerHeight={5 / zoom} />
+                  <Text text={cursor.bubble.text} fontSize={12 / zoom} fontFamily="system-ui" fill="#ffffff" padding={5 / zoom} />
+                </KLabel>
+              )
+          )}
+          {localBubble && cursorPos && (
+            <KLabel x={cursorPos.x} y={cursorPos.y - 18 / zoom} listening={false}>
+              <Tag fill="#334155" cornerRadius={5 / zoom} pointerDirection="down" pointerWidth={6 / zoom} pointerHeight={5 / zoom} />
+              <Text text={localBubble.text} fontSize={12 / zoom} fontFamily="system-ui" fill="#ffffff" padding={5 / zoom} />
+            </KLabel>
+          )}
           <Transformer
             ref={transformerRef}
             rotateEnabled
@@ -428,6 +453,8 @@ export function PlanCanvas() {
           +
         </button>
       </div>
+
+      <ChatPanel />
 
       {editingText && (
         <textarea

@@ -6,6 +6,7 @@ import { getActivePage, usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
 import { findWallSnap, rectCenter, topLeftFromCenter } from '../../utils/wallSnap';
 import { FurnitureIcon } from './FurnitureIcon';
+import { LockBadge } from './LockBadge';
 
 const WALL_STICKY_TYPES = new Set(['door', 'window']);
 
@@ -34,11 +35,11 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
       x={item.x}
       y={item.y}
       rotation={item.rotation}
-      draggable={toolMode === 'select'}
+      draggable={toolMode === 'select' && !item.locked}
       onClick={(e) => onSelect(item.id, e.evt.shiftKey)}
       onTap={() => onSelect(item.id, false)}
       onDblClick={(e) => {
-        if (item.catalogId === 'door') {
+        if (item.catalogId === 'door' && !item.locked) {
           if (e.evt.shiftKey) updateEntity(item.id, { flippedX: !item.flippedX }, { commit: true });
           else updateEntity(item.id, { flipped: !item.flipped }, { commit: true });
         }
@@ -112,6 +113,7 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
           listening={false}
         />
       )}
+      {item.locked && <LockBadge width={item.width} height={item.height} />}
     </Group>
   );
 }

@@ -1,6 +1,6 @@
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import { usePlannerStore } from '../state/store';
-import type { Project } from '../state/types';
+import type { ChatMessage, Project } from '../state/types';
 
 // Supabase's "anon" key is designed to be embedded in client-side code —
 // it's not a secret. Row Level Security policies on the `rooms` table are
@@ -87,7 +87,7 @@ export async function joinRoom(roomId: string): Promise<void> {
   await leaveRoom();
   currentRoomId = roomId;
   const sb = getSupabase();
-  usePlannerStore.getState().setCollabStatus('connecting');
+  usePlannerStore.setState({ collabStatus: 'connecting', chatMessages: [] });
 
   try {
     const { data, error } = await roomsTable().select('*').eq('id', roomId).maybeSingle();
@@ -128,13 +128,23 @@ export async function joinRoom(roomId: string): Promise<void> {
     usePlannerStore.getState().removeRemoteCursor(p.clientId);
   });
 
+  ch.on('broadcast', { event: 'chat' }, ({ payload }) => {
+    const p = payload as ChatMessage;
+    if (p.clientId === clientId) return;
+    usePlannerStore.getState().addChatMessage(p);
+    usePlannerStore.getState().setRemoteCursorBubble(p.clientId, p.text);
+  });
+
   ch.subscribe((status) => {
     if (status === 'SUBSCRIBED') usePlannerStore.getState().setCollabStatus('connected');
     else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') usePlannerStore.getState().setCollabStatus('error');
   });
 
   channel = ch;
-  pruneInterval = setInterval(() => usePlannerStore.getState().pruneStaleCursors(6000), 2000);
+  pruneInterval = setInterval(() => {
+    usePlannerStore.getState().pruneStaleCursors(6000);
+    usePlannerStore.getState().pruneExpiredBubbles();
+  }, 1500);
 
   unsubscribeStore = usePlannerStore.subscribe((state, prev) => {
     if (applyingRemote || state.project === prev.project) return;
@@ -184,6 +194,22 @@ export function broadcastCursor(x: number, y: number): void {
   if (now - lastCursorSentAt < CURSOR_THROTTLE_MS) return;
   lastCursorSentAt = now;
   channel.send({ type: 'broadcast', event: 'cursor', payload: { clientId, x, y, name: clientName, color: clientColor } });
+}
+
+export function sendChatMessage(text: string): void {
+  const trimmed = text.trim();
+  if (!trimmed || !channel) return;
+  const message: ChatMessage = {
+    id: `${clientId}_${Date.now()}`,
+    clientId,
+    name: clientName,
+    color: clientColor,
+    text: trimmed.slice(0, 240),
+    ts: Date.now(),
+  };
+  usePlannerStore.getState().addChatMessage(message);
+  usePlannerStore.getState().setLocalBubble(message.text);
+  channel.send({ type: 'broadcast', event: 'chat', payload: message });
 }
 
 export function getShareUrl(roomId: string): string {
