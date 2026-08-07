@@ -39,6 +39,16 @@ interface HistoryState {
 
 type EntityChanges = Partial<Room> & Partial<FurnitureItem> & Partial<Wall> & Partial<TextLabel>;
 
+export interface RemoteCursor {
+  x: number;
+  y: number;
+  name: string;
+  color: string;
+  updatedAt: number;
+}
+
+export type CollabStatus = 'idle' | 'connecting' | 'connected' | 'error';
+
 interface PlannerState extends HistoryState {
   project: Project;
   selectedIds: string[];
@@ -49,6 +59,8 @@ interface PlannerState extends HistoryState {
   zoom: number;
   cursorPos: { x: number; y: number } | null;
   viewCenter: { x: number; y: number };
+  collabStatus: CollabStatus;
+  remoteCursors: Record<string, RemoteCursor>;
 
   setCanvasSize: (size: { width: number; height: number }) => void;
   setTool: (tool: ToolMode) => void;
@@ -58,6 +70,12 @@ interface PlannerState extends HistoryState {
   setZoom: (zoom: number) => void;
   setCursorPos: (pos: { x: number; y: number } | null) => void;
   setViewCenter: (pos: { x: number; y: number }) => void;
+  setCollabStatus: (status: CollabStatus) => void;
+  setRemoteCursor: (clientId: string, cursor: Omit<RemoteCursor, 'updatedAt'>) => void;
+  removeRemoteCursor: (clientId: string) => void;
+  clearRemoteCursors: () => void;
+  pruneStaleCursors: (maxAgeMs: number) => void;
+  applyRemoteProject: (project: Project) => void;
 
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
@@ -175,6 +193,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   zoom: 1,
   cursorPos: null,
   viewCenter: { x: 400, y: 300 },
+  collabStatus: 'idle',
+  remoteCursors: {},
 
   setCanvasSize: (size) => set({ canvasSize: size }),
   setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
@@ -190,6 +210,31 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   setZoom: (zoom) => set({ zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) }),
   setCursorPos: (pos) => set({ cursorPos: pos }),
   setViewCenter: (pos) => set({ viewCenter: pos }),
+  setCollabStatus: (status) => set({ collabStatus: status }),
+  setRemoteCursor: (clientId, cursor) =>
+    set((s) => ({
+      remoteCursors: { ...s.remoteCursors, [clientId]: { ...cursor, updatedAt: Date.now() } },
+    })),
+  removeRemoteCursor: (clientId) =>
+    set((s) => {
+      const next = { ...s.remoteCursors };
+      delete next[clientId];
+      return { remoteCursors: next };
+    }),
+  clearRemoteCursors: () => set({ remoteCursors: {} }),
+  pruneStaleCursors: (maxAgeMs) =>
+    set((s) => {
+      const now = Date.now();
+      const next: Record<string, RemoteCursor> = {};
+      for (const [id, cursor] of Object.entries(s.remoteCursors)) {
+        if (now - cursor.updatedAt <= maxAgeMs) next[id] = cursor;
+      }
+      return { remoteCursors: next };
+    }),
+  applyRemoteProject: (project) => {
+    set({ project: normalizeProject(project) });
+    persist(get().project);
+  },
 
   beginChange: () => {
     const { project, past } = get();

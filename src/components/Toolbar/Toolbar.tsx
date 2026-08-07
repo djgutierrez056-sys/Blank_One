@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { usePlannerStore } from '../../state/store';
 import { exportProject, importProjectFile } from '../../utils/persistence';
+import { ShareButton } from './ShareButton';
 
 function Button({
   onClick,
@@ -140,6 +141,9 @@ export function Toolbar() {
       </label>
 
       <div className="flex-1" />
+
+      <ShareButton />
+      <Divider />
 
       <Button
         title="Start a new blank plan"

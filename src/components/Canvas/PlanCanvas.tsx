@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type Konva from 'konva';
-import { Layer, Line, Rect, Stage, Transformer } from 'react-konva';
+import { Circle, Layer, Line, Rect, Stage, Text, Transformer } from 'react-konva';
 import { getActivePage, MAX_ZOOM, MIN_ZOOM, usePlannerStore } from '../../state/store';
 import { RoomShape } from './RoomShape';
 import { FurnitureShape } from './FurnitureShape';
@@ -8,6 +8,7 @@ import { WallShape } from './WallShape';
 import { TextLabelShape } from './TextLabelShape';
 import { snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
+import { broadcastCursor } from '../../lib/collab';
 
 const WALL_THICKNESS = 6;
 const ZOOM_STEP = 1.15;
@@ -34,6 +35,7 @@ export function PlanCanvas() {
   const setZoom = usePlannerStore((s) => s.setZoom);
   const setCursorPos = usePlannerStore((s) => s.setCursorPos);
   const setViewCenter = usePlannerStore((s) => s.setViewCenter);
+  const remoteCursors = usePlannerStore((s) => s.remoteCursors);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -165,7 +167,10 @@ export function PlanCanvas() {
 
   function handleMouseMove() {
     const pos = stagePos();
-    if (pos) setCursorPos(pos);
+    if (pos) {
+      setCursorPos(pos);
+      broadcastCursor(pos.x, pos.y);
+    }
 
     if (tool === 'draw-room' && drawStart) {
       if (!pos) return;
@@ -373,6 +378,21 @@ export function PlanCanvas() {
               lineCap="round"
             />
           )}
+          {Object.entries(remoteCursors).map(([id, cursor]) => (
+            <Text
+              key={id}
+              x={cursor.x}
+              y={cursor.y}
+              text={`▲ ${cursor.name}`}
+              fontSize={12 / zoom}
+              fontFamily="system-ui"
+              fill={cursor.color}
+              listening={false}
+            />
+          ))}
+          {Object.entries(remoteCursors).map(([id, cursor]) => (
+            <Circle key={`dot-${id}`} x={cursor.x} y={cursor.y} radius={3 / zoom} fill={cursor.color} listening={false} />
+          ))}
           <Transformer
             ref={transformerRef}
             rotateEnabled
