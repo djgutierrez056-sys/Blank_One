@@ -25,6 +25,7 @@ export interface FurnitureItem {
   color: string;
   label: string;
   flipped?: boolean; // for doors: which side of the wall it swings into
+  flippedX?: boolean; // for doors: which side of the opening the hinge is on
 }
 
 export interface Wall {

@@ -14,9 +14,10 @@ interface Props {
   height: number;
   color: string;
   flipped?: boolean;
+  flippedX?: boolean;
 }
 
-export function FurnitureIcon({ catalogId, width, height, color, flipped }: Props) {
+export function FurnitureIcon({ catalogId, width, height, color, flipped, flippedX }: Props) {
   const stroke = darken(color, 0.35);
   const base = (
     <Rect width={width} height={height} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={3} />
@@ -25,6 +26,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
   switch (catalogId) {
     case 'sofa':
     case 'loveseat':
+    case 'sectional':
       return (
         <Group>
           {base}
@@ -34,6 +36,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
         </Group>
       );
     case 'armchair':
+    case 'lounge-chair':
       return (
         <Group>
           {base}
@@ -44,12 +47,14 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
       );
     case 'office-chair':
     case 'dining-chair':
+    case 'bar-stool':
       return (
         <Group>
           <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) / 2} fill={color} stroke={stroke} strokeWidth={1.5} />
           <Rect x={width * 0.15} y={0} width={width * 0.7} height={height * 0.22} fill={darken(color, 0.2)} cornerRadius={2} />
         </Group>
       );
+    case 'bed-king':
     case 'bed-queen':
     case 'bed-twin':
       return (
@@ -65,6 +70,9 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
     case 'wardrobe':
     case 'filing-cabinet':
     case 'bookshelf':
+    case 'vanity':
+    case 'pantry':
+    case 'linen-cabinet':
       return (
         <Group>
           {base}
@@ -77,6 +85,8 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
     case 'dining-table':
     case 'desk':
     case 'island':
+    case 'side-table':
+    case 'meeting-table':
       return (
         <Group>
           {base}
@@ -105,6 +115,8 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
         </Group>
       );
     case 'fridge':
+    case 'microwave':
+    case 'dishwasher':
       return (
         <Group>
           {base}
@@ -196,27 +208,90 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
       return (
         <Group>
           <Line points={[0, height / 2, width, height / 2]} stroke={stroke} strokeWidth={height} />
-          <Group y={height / 2} scaleY={flipped ? -1 : 1}>
-            <Line points={[0, 0, 0, -width]} stroke={stroke} strokeWidth={1.5} />
-            <Arc
-              x={0}
-              y={0}
-              innerRadius={width - 1}
-              outerRadius={width}
-              angle={90}
-              rotation={-90}
-              stroke={stroke}
-              strokeWidth={1}
-              fill="transparent"
-            />
+          {/* Outer group mirrors left/right to move the hinge to the other end
+              of the opening; inner group mirrors up/down to swing into the
+              other side of the wall. Together these give all four swing directions. */}
+          <Group x={flippedX ? width : 0} scaleX={flippedX ? -1 : 1}>
+            <Group y={height / 2} scaleY={flipped ? -1 : 1}>
+              <Line points={[0, 0, 0, -width]} stroke={stroke} strokeWidth={1.5} />
+              <Arc
+                x={0}
+                y={0}
+                innerRadius={width - 1}
+                outerRadius={width}
+                angle={90}
+                rotation={-90}
+                stroke={stroke}
+                strokeWidth={1}
+                fill="transparent"
+              />
+            </Group>
           </Group>
         </Group>
       );
     case 'window':
+    case 'large-window':
       return (
         <Group>
           <Rect width={width} height={height} fill="#ffffff" stroke={stroke} strokeWidth={2} />
           <Line points={[width / 2, 0, width / 2, height]} stroke={stroke} strokeWidth={1.5} />
+        </Group>
+      );
+    case 'sliding-door':
+      return (
+        <Group>
+          <Line points={[0, height / 2, width, height / 2]} stroke={stroke} strokeWidth={height} />
+          <Rect x={0} y={0} width={width * 0.55} height={height} fill={color} stroke={stroke} strokeWidth={1} opacity={0.85} />
+          <Rect x={width * 0.45} y={0} width={width * 0.55} height={height} fill={color} stroke={stroke} strokeWidth={1} opacity={0.85} />
+        </Group>
+      );
+    case 'floor-lamp':
+      return (
+        <Group>
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) / 2} fill={color} stroke={stroke} strokeWidth={1.5} opacity={0.85} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.12} fill={stroke} />
+        </Group>
+      );
+    case 'umbrella': {
+      const r = Math.min(width, height) / 2;
+      const spokes = [];
+      for (let a = 0; a < 360; a += 45) {
+        const rad = (a * Math.PI) / 180;
+        spokes.push(
+          <Line
+            key={a}
+            points={[width / 2, height / 2, width / 2 + r * Math.cos(rad), height / 2 + r * Math.sin(rad)]}
+            stroke={stroke}
+            strokeWidth={1}
+          />
+        );
+      }
+      return (
+        <Group>
+          <Circle x={width / 2} y={height / 2} radius={r} fill={color} stroke={stroke} strokeWidth={1.5} opacity={0.9} />
+          {spokes}
+        </Group>
+      );
+    }
+    case 'hammock':
+      return (
+        <Group>
+          <Line points={[0, height * 0.1, 0, height * 0.9]} stroke={stroke} strokeWidth={2} />
+          <Line points={[width, height * 0.1, width, height * 0.9]} stroke={stroke} strokeWidth={2} />
+          <Line
+            points={[0, height * 0.2, width * 0.5, height * 0.85, width, height * 0.2]}
+            stroke={color}
+            strokeWidth={3}
+            tension={0.5}
+            lineCap="round"
+          />
+        </Group>
+      );
+    case 'whiteboard':
+      return (
+        <Group>
+          <Rect width={width} height={height} fill="#ffffff" stroke={stroke} strokeWidth={1.5} />
+          <Line points={[0, height, width, height]} stroke={stroke} strokeWidth={1} />
         </Group>
       );
     default:

@@ -157,12 +157,21 @@ export function PropertiesPanel() {
       )}
 
       {item && item.catalogId === 'door' && (
-        <button
-          onClick={() => updateEntity(item.id, { flipped: !item.flipped }, { commit: true })}
-          className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-        >
-          Flip swing ({item.flipped ? 'inward' : 'outward'})
-        </button>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => updateEntity(item.id, { flipped: !item.flipped }, { commit: true })}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Flip swing ({item.flipped ? 'inward' : 'outward'})
+          </button>
+          <button
+            onClick={() => updateEntity(item.id, { flippedX: !item.flippedX }, { commit: true })}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+          >
+            Flip hinge ({item.flippedX ? 'right' : 'left'})
+          </button>
+          <p className="text-[11px] text-slate-400">Tip: double-click a door to flip swing, Shift+double-click to flip hinge.</p>
+        </div>
       )}
     </div>
   );

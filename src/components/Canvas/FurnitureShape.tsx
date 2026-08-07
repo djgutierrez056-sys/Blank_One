@@ -37,9 +37,10 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
       draggable={toolMode === 'select'}
       onClick={(e) => onSelect(item.id, e.evt.shiftKey)}
       onTap={() => onSelect(item.id, false)}
-      onDblClick={() => {
+      onDblClick={(e) => {
         if (item.catalogId === 'door') {
-          updateEntity(item.id, { flipped: !item.flipped }, { commit: true });
+          if (e.evt.shiftKey) updateEntity(item.id, { flippedX: !item.flippedX }, { commit: true });
+          else updateEntity(item.id, { flipped: !item.flipped }, { commit: true });
         }
       }}
       onDragStart={() => beginChange()}
@@ -81,7 +82,14 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
         });
       }}
     >
-      <FurnitureIcon catalogId={item.catalogId} width={item.width} height={item.height} color={item.color} flipped={item.flipped} />
+      <FurnitureIcon
+        catalogId={item.catalogId}
+        width={item.width}
+        height={item.height}
+        color={item.color}
+        flipped={item.flipped}
+        flippedX={item.flippedX}
+      />
       {isSelected && (
         <Rect
           width={item.width}
