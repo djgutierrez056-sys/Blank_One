@@ -5,7 +5,7 @@ interface WallSnapSource {
   walls: Wall[];
 }
 
-interface Segment {
+export interface Segment {
   x1: number;
   y1: number;
   x2: number;
@@ -17,7 +17,7 @@ function rotatePoint(x: number, y: number, angleDeg: number): { x: number; y: nu
   return { x: x * Math.cos(rad) - y * Math.sin(rad), y: x * Math.sin(rad) + y * Math.cos(rad) };
 }
 
-function roomEdges(room: Room): Segment[] {
+export function roomEdges(room: Room): Segment[] {
   const corners = [
     { x: 0, y: 0 },
     { x: room.width, y: 0 },
@@ -45,7 +45,7 @@ function wallSegment(wall: Wall): Segment {
   };
 }
 
-function closestPointOnSegment(px: number, py: number, seg: Segment) {
+export function closestPointOnSegment(px: number, py: number, seg: Segment) {
   const dx = seg.x2 - seg.x1;
   const dy = seg.y2 - seg.y1;
   const lenSq = dx * dx + dy * dy;

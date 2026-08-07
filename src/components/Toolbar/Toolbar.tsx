@@ -56,6 +56,8 @@ export function Toolbar() {
   const setChatOpen = usePlannerStore((s) => s.setChatOpen);
   const lockedPanelOpen = usePlannerStore((s) => s.lockedPanelOpen);
   const setLockedPanelOpen = usePlannerStore((s) => s.setLockedPanelOpen);
+  const view3D = usePlannerStore((s) => s.view3D);
+  const setView3D = usePlannerStore((s) => s.setView3D);
   const project = usePlannerStore((s) => s.project);
   const setProject = usePlannerStore((s) => s.setProject);
   const newProject = usePlannerStore((s) => s.newProject);
@@ -92,67 +94,71 @@ export function Toolbar() {
       />
       <Divider />
 
-      <Button title="Select tool (V)" active={tool === 'select'} onClick={() => setTool('select')}>
-        Select
-      </Button>
-      <Button
-        title="Select everything on this page (Ctrl+A)"
-        onClick={hasSelection ? clearSelection : selectAll}
-        disabled={!hasSelection && allEntities.length === 0}
-      >
-        {hasSelection ? 'Deselect' : 'Select All'}
-      </Button>
-      <Button title="Draw room (click-drag on canvas)" active={tool === 'draw-room'} onClick={() => setTool('draw-room')}>
-        + Room
-      </Button>
-      <Button title="Draw a wall / divider (click-drag on canvas, any angle)" active={tool === 'draw-wall'} onClick={() => setTool('draw-wall')}>
-        + Wall
-      </Button>
-      <Button title="Place a text label (click on canvas)" active={tool === 'place-text'} onClick={() => setTool('place-text')}>
-        + Text
-      </Button>
-      <Divider />
+      {!view3D && (
+        <>
+          <Button title="Select tool (V)" active={tool === 'select'} onClick={() => setTool('select')}>
+            Select
+          </Button>
+          <Button
+            title="Select everything on this page (Ctrl+A)"
+            onClick={hasSelection ? clearSelection : selectAll}
+            disabled={!hasSelection && allEntities.length === 0}
+          >
+            {hasSelection ? 'Deselect' : 'Select All'}
+          </Button>
+          <Button title="Draw room (click-drag on canvas)" active={tool === 'draw-room'} onClick={() => setTool('draw-room')}>
+            + Room
+          </Button>
+          <Button title="Draw a wall / divider (click-drag on canvas, any angle)" active={tool === 'draw-wall'} onClick={() => setTool('draw-wall')}>
+            + Wall
+          </Button>
+          <Button title="Place a text label (click on canvas)" active={tool === 'place-text'} onClick={() => setTool('place-text')}>
+            + Text
+          </Button>
+          <Divider />
 
-      <Button title="Undo (Ctrl+Z)" onClick={undo} disabled={past.length === 0}>
-        Undo
-      </Button>
-      <Button title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={future.length === 0}>
-        Redo
-      </Button>
-      <Divider />
+          <Button title="Undo (Ctrl+Z)" onClick={undo} disabled={past.length === 0}>
+            Undo
+          </Button>
+          <Button title="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={future.length === 0}>
+            Redo
+          </Button>
+          <Divider />
 
-      <Button title="Copy (Ctrl+C)" onClick={copy} disabled={!hasSelection}>
-        Copy
-      </Button>
-      <Button title="Paste (Ctrl+V)" onClick={paste} disabled={clipboardLength === 0}>
-        Paste
-      </Button>
-      <Button title="Duplicate (Ctrl+D)" onClick={duplicateSelected} disabled={!hasSelection}>
-        Duplicate
-      </Button>
-      <Button title="Rotate 15°" onClick={() => rotateSelected(15)} disabled={!hasSelection}>
-        Rotate ⟳
-      </Button>
-      <Button title="Delete (Del)" onClick={deleteSelected} disabled={!hasSelection}>
-        Delete
-      </Button>
-      <Button
-        title={allSelectedLocked ? 'Unlock selection (Ctrl+L)' : 'Lock selection so it can\'t be moved (Ctrl+L)'}
-        active={allSelectedLocked}
-        onClick={toggleLockSelected}
-        disabled={!hasSelection}
-      >
-        {allSelectedLocked ? 'Unlock' : 'Lock'}
-      </Button>
-      <Button
-        title="Show what's locked on this page"
-        active={lockedPanelOpen}
-        onClick={() => setLockedPanelOpen(!lockedPanelOpen)}
-        disabled={lockedCount === 0 && !lockedPanelOpen}
-      >
-        🔒 {lockedCount}
-      </Button>
-      <Divider />
+          <Button title="Copy (Ctrl+C)" onClick={copy} disabled={!hasSelection}>
+            Copy
+          </Button>
+          <Button title="Paste (Ctrl+V)" onClick={paste} disabled={clipboardLength === 0}>
+            Paste
+          </Button>
+          <Button title="Duplicate (Ctrl+D)" onClick={duplicateSelected} disabled={!hasSelection}>
+            Duplicate
+          </Button>
+          <Button title="Rotate 15°" onClick={() => rotateSelected(15)} disabled={!hasSelection}>
+            Rotate ⟳
+          </Button>
+          <Button title="Delete (Del)" onClick={deleteSelected} disabled={!hasSelection}>
+            Delete
+          </Button>
+          <Button
+            title={allSelectedLocked ? 'Unlock selection (Ctrl+L)' : 'Lock selection so it can\'t be moved (Ctrl+L)'}
+            active={allSelectedLocked}
+            onClick={toggleLockSelected}
+            disabled={!hasSelection}
+          >
+            {allSelectedLocked ? 'Unlock' : 'Lock'}
+          </Button>
+          <Button
+            title="Show what's locked on this page"
+            active={lockedPanelOpen}
+            onClick={() => setLockedPanelOpen(!lockedPanelOpen)}
+            disabled={lockedCount === 0 && !lockedPanelOpen}
+          >
+            🔒 {lockedCount}
+          </Button>
+          <Divider />
+        </>
+      )}
 
       <label className="flex items-center gap-1 text-xs text-slate-500">
         <input
@@ -177,6 +183,15 @@ export function Toolbar() {
       </label>
 
       <div className="flex-1" />
+
+      <Button
+        title={view3D ? 'Back to the 2D floor plan' : 'View this plan in 3D'}
+        active={view3D}
+        onClick={() => setView3D(!view3D)}
+      >
+        {view3D ? '2D' : '3D'}
+      </Button>
+      <Divider />
 
       <ShareButton />
       {collabStatus === 'connected' && (
