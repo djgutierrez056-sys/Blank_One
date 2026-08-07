@@ -57,6 +57,8 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'patio-table', name: 'Patio Table', category: 'Outdoor', width: 3.5, height: 3.5, color: '#7a9e7e' },
   { id: 'grill', name: 'Grill', category: 'Outdoor', width: 2.3, height: 2, color: '#4a4a4a' },
   { id: 'plant', name: 'Plant', category: 'Outdoor', width: 1.6, height: 1.6, color: '#5f8f5a' },
+  { id: 'bench', name: 'Bench', category: 'Outdoor', width: 4.5, height: 1.5, color: '#8a6a45' },
+  { id: 'fence', name: 'Fence', category: 'Outdoor', width: 8, height: 0.4, color: '#9c8462' },
 
   // Doors & Windows
   { id: 'door', name: 'Door', category: 'Doors & Windows', width: 3, height: 0.5, color: '#8a6a45' },

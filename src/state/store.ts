@@ -1,26 +1,35 @@
 import { create } from 'zustand';
-import type { Entity, FurnitureItem, Project, Room, TextLabel, ToolMode, Wall } from './types';
+import type { Entity, FurnitureItem, Page, Project, Room, TextLabel, ToolMode, Wall } from './types';
 import { getCatalogEntry } from '../data/catalog';
 import { loadFromLocalStorage, saveToLocalStorage } from '../utils/persistence';
 
 const HISTORY_LIMIT = 50;
-const PASTE_OFFSET = 20;
+const DUPLICATE_OFFSET = 20;
+export const MIN_ZOOM = 0.2;
+export const MAX_ZOOM = 3;
 
 function makeId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
 }
 
+export function emptyPage(name: string): Page {
+  return { id: makeId('page'), name, rooms: [], items: [], walls: [], texts: [] };
+}
+
 export function emptyProject(): Project {
+  const page = emptyPage('Page 1');
   return {
     name: 'Untitled Plan',
-    rooms: [],
-    items: [],
-    walls: [],
-    texts: [],
+    pages: [page],
+    activePageId: page.id,
     scale: 20, // px per foot
     gridSnap: 0.5, // feet
     showLabels: true,
   };
+}
+
+export function getActivePage(project: Project): Page {
+  return project.pages.find((p) => p.id === project.activePageId) ?? project.pages[0];
 }
 
 interface HistoryState {
@@ -37,12 +46,18 @@ interface PlannerState extends HistoryState {
   clipboard: Entity[];
   canvasSize: { width: number; height: number };
   dropCascade: number;
+  zoom: number;
+  cursorPos: { x: number; y: number } | null;
+  viewCenter: { x: number; y: number };
 
   setCanvasSize: (size: { width: number; height: number }) => void;
   setTool: (tool: ToolMode) => void;
   select: (ids: string[]) => void;
   toggleSelect: (id: string, additive: boolean) => void;
   clearSelection: () => void;
+  setZoom: (zoom: number) => void;
+  setCursorPos: (pos: { x: number; y: number } | null) => void;
+  setViewCenter: (pos: { x: number; y: number }) => void;
 
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
@@ -61,6 +76,11 @@ interface PlannerState extends HistoryState {
   undo: () => void;
   redo: () => void;
 
+  addPage: () => void;
+  deletePage: (id: string) => void;
+  renamePage: (id: string, name: string) => void;
+  setActivePage: (id: string) => void;
+
   setProject: (project: Project) => void;
   newProject: () => void;
   setGridSnap: (feet: number) => void;
@@ -68,7 +88,7 @@ interface PlannerState extends HistoryState {
   renameProject: (name: string) => void;
 }
 
-function cloneProject(p: Project): Project {
+function clonePage(p: Page): Page {
   return {
     ...p,
     rooms: p.rooms.map((r) => ({ ...r })),
@@ -78,40 +98,66 @@ function cloneProject(p: Project): Project {
   };
 }
 
-function findEntities(project: Project, ids: string[]): Entity[] {
+function cloneProject(p: Project): Project {
+  return { ...p, pages: p.pages.map(clonePage) };
+}
+
+function findEntities(page: Page, ids: string[]): Entity[] {
   const idSet = new Set(ids);
   return [
-    ...project.rooms.filter((r) => idSet.has(r.id)),
-    ...project.items.filter((i) => idSet.has(i.id)),
-    ...project.walls.filter((w) => idSet.has(w.id)),
-    ...project.texts.filter((t) => idSet.has(t.id)),
+    ...page.rooms.filter((r) => idSet.has(r.id)),
+    ...page.items.filter((i) => idSet.has(i.id)),
+    ...page.walls.filter((w) => idSet.has(w.id)),
+    ...page.texts.filter((t) => idSet.has(t.id)),
   ];
 }
 
-function mapCollections(
-  project: Project,
-  idSet: Set<string>,
-  transform: <T extends Entity>(e: T) => T
-): Project {
+function mapCollections(page: Page, idSet: Set<string>, transform: <T extends Entity>(e: T) => T): Page {
   return {
-    ...project,
-    rooms: project.rooms.map((r) => (idSet.has(r.id) ? transform(r) : r)),
-    items: project.items.map((i) => (idSet.has(i.id) ? transform(i) : i)),
-    walls: project.walls.map((w) => (idSet.has(w.id) ? transform(w) : w)),
-    texts: project.texts.map((t) => (idSet.has(t.id) ? transform(t) : t)),
+    ...page,
+    rooms: page.rooms.map((r) => (idSet.has(r.id) ? transform(r) : r)),
+    items: page.items.map((i) => (idSet.has(i.id) ? transform(i) : i)),
+    walls: page.walls.map((w) => (idSet.has(w.id) ? transform(w) : w)),
+    texts: page.texts.map((t) => (idSet.has(t.id) ? transform(t) : t)),
   };
 }
 
-function normalizeProject(project: Project): Project {
+/** Replace the active page in a project via an updater function. */
+function updateActivePage(project: Project, updater: (page: Page) => Page): Project {
+  const activeId = project.activePageId;
   return {
     ...project,
-    walls: project.walls ?? [],
-    texts: project.texts ?? [],
-    rooms: project.rooms.map((r) => ({
-      ...r,
-      labelX: r.labelX ?? r.width / 2,
-      labelY: r.labelY ?? r.height / 2,
+    pages: project.pages.map((p) => (p.id === activeId ? updater(p) : p)),
+  };
+}
+
+function normalizeProject(raw: Project | (Omit<Project, 'pages' | 'activePageId'> & Partial<Page>)): Project {
+  let project = raw as Project;
+
+  // Migrate legacy single-page projects (rooms/items/walls/texts directly on the project).
+  if (!Array.isArray(project.pages)) {
+    const legacy = raw as unknown as { rooms?: Room[]; items?: FurnitureItem[]; walls?: Wall[]; texts?: TextLabel[] };
+    const page = emptyPage('Page 1');
+    page.rooms = legacy.rooms ?? [];
+    page.items = legacy.items ?? [];
+    page.walls = legacy.walls ?? [];
+    page.texts = legacy.texts ?? [];
+    project = { ...(raw as Project), pages: [page], activePageId: page.id };
+  }
+
+  return {
+    ...project,
+    pages: project.pages.map((page) => ({
+      ...page,
+      walls: page.walls ?? [],
+      texts: page.texts ?? [],
+      rooms: page.rooms.map((r) => ({
+        ...r,
+        labelX: r.labelX ?? r.width / 2,
+        labelY: r.labelY ?? r.height / 2,
+      })),
     })),
+    activePageId: project.pages.some((p) => p.id === project.activePageId) ? project.activePageId : project.pages[0].id,
   };
 }
 
@@ -126,10 +172,12 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   future: [],
   canvasSize: { width: 800, height: 600 },
   dropCascade: 0,
+  zoom: 1,
+  cursorPos: null,
+  viewCenter: { x: 400, y: 300 },
 
   setCanvasSize: (size) => set({ canvasSize: size }),
-  setTool: (tool) =>
-    set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
+  setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
 
   select: (ids) => set({ selectedIds: ids }),
   toggleSelect: (id, additive) =>
@@ -139,6 +187,9 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       return { selectedIds: has ? s.selectedIds.filter((x) => x !== id) : [...s.selectedIds, id] };
     }),
   clearSelection: () => set({ selectedIds: [] }),
+  setZoom: (zoom) => set({ zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) }),
+  setCursorPos: (pos) => set({ cursorPos: pos }),
+  setViewCenter: (pos) => set({ viewCenter: pos }),
 
   beginChange: () => {
     const { project, past } = get();
@@ -167,7 +218,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...partial,
     };
     set((s) => ({
-      project: { ...s.project, rooms: [...s.project.rooms, room] },
+      project: updateActivePage(s.project, (page) => ({ ...page, rooms: [...page.rooms, room] })),
       selectedIds: [id],
     }));
     persist(get().project);
@@ -190,7 +241,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       ...partial,
     };
     set((s) => ({
-      project: { ...s.project, walls: [...s.project.walls, wall] },
+      project: updateActivePage(s.project, (page) => ({ ...page, walls: [...page.walls, wall] })),
       selectedIds: [id],
     }));
     persist(get().project);
@@ -214,7 +265,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       label: 'Text',
     };
     set((s) => ({
-      project: { ...s.project, texts: [...s.project.texts, text] },
+      project: updateActivePage(s.project, (page) => ({ ...page, texts: [...page.texts, text] })),
       selectedIds: [id],
     }));
     persist(get().project);
@@ -242,7 +293,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       label: entry.name,
     };
     set((s) => ({
-      project: { ...s.project, items: [...s.project.items, item] },
+      project: updateActivePage(s.project, (page) => ({ ...page, items: [...page.items, item] })),
       selectedIds: [id],
       dropCascade: s.dropCascade + 1,
     }));
@@ -253,7 +304,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   updateEntity: (id, changes, opts) => {
     if (opts?.commit) get().beginChange();
     set((s) => ({
-      project: mapCollections(s.project, new Set([id]), (e) => ({ ...e, ...changes })),
+      project: updateActivePage(s.project, (page) => mapCollections(page, new Set([id]), (e) => ({ ...e, ...changes }))),
     }));
     persist(get().project);
   },
@@ -264,13 +315,13 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     get().beginChange();
     const idSet = new Set(selectedIds);
     set((s) => ({
-      project: {
-        ...s.project,
-        rooms: s.project.rooms.filter((r) => !idSet.has(r.id)),
-        items: s.project.items.filter((i) => !idSet.has(i.id)),
-        walls: s.project.walls.filter((w) => !idSet.has(w.id)),
-        texts: s.project.texts.filter((t) => !idSet.has(t.id)),
-      },
+      project: updateActivePage(s.project, (page) => ({
+        ...page,
+        rooms: page.rooms.filter((r) => !idSet.has(r.id)),
+        items: page.items.filter((i) => !idSet.has(i.id)),
+        walls: page.walls.filter((w) => !idSet.has(w.id)),
+        texts: page.texts.filter((t) => !idSet.has(t.id)),
+      })),
       selectedIds: [],
     }));
     persist(get().project);
@@ -278,13 +329,27 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   copy: () => {
     const { project, selectedIds } = get();
-    set({ clipboard: findEntities(project, selectedIds).map((e) => ({ ...e })) });
+    set({ clipboard: findEntities(getActivePage(project), selectedIds).map((e) => ({ ...e })) });
   },
 
   paste: () => {
-    const { clipboard } = get();
+    const { clipboard, cursorPos } = get();
     if (clipboard.length === 0) return;
     get().beginChange();
+
+    let dx = DUPLICATE_OFFSET;
+    let dy = DUPLICATE_OFFSET;
+    if (cursorPos) {
+      const minX = Math.min(...clipboard.map((e) => e.x));
+      const minY = Math.min(...clipboard.map((e) => e.y));
+      const maxX = Math.max(...clipboard.map((e) => e.x + e.width));
+      const maxY = Math.max(...clipboard.map((e) => e.y + e.height));
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      dx = cursorPos.x - centerX;
+      dy = cursorPos.y - centerY;
+    }
+
     const newIds: string[] = [];
     set((s) => {
       const newRooms: Room[] = [];
@@ -294,20 +359,20 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       for (const e of clipboard) {
         const id = makeId(e.kind);
         newIds.push(id);
-        const offsetEntity = { ...e, id, x: e.x + PASTE_OFFSET, y: e.y + PASTE_OFFSET };
+        const offsetEntity = { ...e, id, x: e.x + dx, y: e.y + dy };
         if (e.kind === 'room') newRooms.push(offsetEntity as Room);
         else if (e.kind === 'item') newItems.push(offsetEntity as FurnitureItem);
         else if (e.kind === 'wall') newWalls.push(offsetEntity as Wall);
         else newTexts.push(offsetEntity as TextLabel);
       }
       return {
-        project: {
-          ...s.project,
-          rooms: [...s.project.rooms, ...newRooms],
-          items: [...s.project.items, ...newItems],
-          walls: [...s.project.walls, ...newWalls],
-          texts: [...s.project.texts, ...newTexts],
-        },
+        project: updateActivePage(s.project, (page) => ({
+          ...page,
+          rooms: [...page.rooms, ...newRooms],
+          items: [...page.items, ...newItems],
+          walls: [...page.walls, ...newWalls],
+          texts: [...page.texts, ...newTexts],
+        })),
         selectedIds: newIds,
       };
     });
@@ -315,28 +380,57 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   duplicateSelected: () => {
-    get().copy();
-    get().paste();
-  },
-
-  rotateSelected: (deltaDeg) => {
     const { project, selectedIds } = get();
     if (selectedIds.length === 0) return;
     get().beginChange();
+    const clip = findEntities(getActivePage(project), selectedIds).map((e) => ({ ...e }));
+    const newIds: string[] = [];
+    set((s) => {
+      const newRooms: Room[] = [];
+      const newItems: FurnitureItem[] = [];
+      const newWalls: Wall[] = [];
+      const newTexts: TextLabel[] = [];
+      for (const e of clip) {
+        const id = makeId(e.kind);
+        newIds.push(id);
+        const offsetEntity = { ...e, id, x: e.x + DUPLICATE_OFFSET, y: e.y + DUPLICATE_OFFSET };
+        if (e.kind === 'room') newRooms.push(offsetEntity as Room);
+        else if (e.kind === 'item') newItems.push(offsetEntity as FurnitureItem);
+        else if (e.kind === 'wall') newWalls.push(offsetEntity as Wall);
+        else newTexts.push(offsetEntity as TextLabel);
+      }
+      return {
+        project: updateActivePage(s.project, (page) => ({
+          ...page,
+          rooms: [...page.rooms, ...newRooms],
+          items: [...page.items, ...newItems],
+          walls: [...page.walls, ...newWalls],
+          texts: [...page.texts, ...newTexts],
+        })),
+        selectedIds: newIds,
+      };
+    });
+    persist(get().project);
+  },
+
+  rotateSelected: (deltaDeg) => {
+    const { selectedIds } = get();
+    if (selectedIds.length === 0) return;
+    get().beginChange();
     const idSet = new Set(selectedIds);
-    set(() => ({
-      project: mapCollections(project, idSet, (e) => ({ ...e, rotation: e.rotation + deltaDeg })),
+    set((s) => ({
+      project: updateActivePage(s.project, (page) => mapCollections(page, idSet, (e) => ({ ...e, rotation: e.rotation + deltaDeg }))),
     }));
     persist(get().project);
   },
 
   nudgeSelected: (dx, dy) => {
-    const { project, selectedIds } = get();
+    const { selectedIds } = get();
     if (selectedIds.length === 0) return;
     get().beginChange();
     const idSet = new Set(selectedIds);
-    set(() => ({
-      project: mapCollections(project, idSet, (e) => ({ ...e, x: e.x + dx, y: e.y + dy })),
+    set((s) => ({
+      project: updateActivePage(s.project, (page) => mapCollections(page, idSet, (e) => ({ ...e, x: e.x + dx, y: e.y + dy }))),
     }));
     persist(get().project);
   },
@@ -365,6 +459,41 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       selectedIds: [],
     });
     persist(next);
+  },
+
+  addPage: () => {
+    get().beginChange();
+    const { project } = get();
+    const page = emptyPage(`Page ${project.pages.length + 1}`);
+    set((s) => ({
+      project: { ...s.project, pages: [...s.project.pages, page], activePageId: page.id },
+      selectedIds: [],
+    }));
+    persist(get().project);
+  },
+
+  deletePage: (id) => {
+    const { project } = get();
+    if (project.pages.length <= 1) return;
+    get().beginChange();
+    set((s) => {
+      const pages = s.project.pages.filter((p) => p.id !== id);
+      const activePageId = s.project.activePageId === id ? pages[0].id : s.project.activePageId;
+      return { project: { ...s.project, pages, activePageId }, selectedIds: [] };
+    });
+    persist(get().project);
+  },
+
+  renamePage: (id, name) => {
+    get().beginChange();
+    set((s) => ({
+      project: { ...s.project, pages: s.project.pages.map((p) => (p.id === id ? { ...p, name } : p)) },
+    }));
+    persist(get().project);
+  },
+
+  setActivePage: (id) => {
+    set((s) => ({ project: { ...s.project, activePageId: id }, selectedIds: [] }));
   },
 
   setProject: (project) => {

@@ -16,7 +16,7 @@ function CatalogThumb({ catalogId, color }: { catalogId: string; color: string }
 
 export function CatalogPanel() {
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
-  const canvasSize = usePlannerStore((s) => s.canvasSize);
+  const viewCenter = usePlannerStore((s) => s.viewCenter);
   const [openCategory, setOpenCategory] = useState<string>(CATEGORIES[0]);
 
   return (
@@ -44,7 +44,7 @@ export function CatalogPanel() {
                     key={entry.id}
                     draggable
                     onDragStart={(e) => e.dataTransfer.setData('text/catalog-id', entry.id)}
-                    onClick={() => addItemFromCatalog(entry.id, canvasSize.width / 2, canvasSize.height / 2)}
+                    onClick={() => addItemFromCatalog(entry.id, viewCenter.x, viewCenter.y)}
                     title={`${entry.name} (${entry.width}' x ${entry.height}')`}
                     className="flex flex-col items-center rounded-lg border border-slate-200 bg-white p-1.5 shadow-sm transition hover:border-blue-300 hover:shadow"
                   >

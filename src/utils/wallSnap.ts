@@ -1,4 +1,9 @@
-import type { Project, Room, Wall } from '../state/types';
+import type { Room, Wall } from '../state/types';
+
+interface WallSnapSource {
+  rooms: Room[];
+  walls: Wall[];
+}
 
 interface Segment {
   x1: number;
@@ -52,7 +57,7 @@ function closestPointOnSegment(px: number, py: number, seg: Segment) {
 /** Given a door/window's current center point, find the nearest room edge or
  * freestanding wall within `threshold` px and return the point + angle to snap to. */
 export function findWallSnap(
-  project: Project,
+  source: WallSnapSource,
   centerX: number,
   centerY: number,
   threshold = 24,
@@ -60,7 +65,7 @@ export function findWallSnap(
 ): { x: number; y: number; angle: number } | null {
   let best: { dist: number; x: number; y: number; angle: number } | null = null;
 
-  for (const room of project.rooms) {
+  for (const room of source.rooms) {
     for (const edge of roomEdges(room)) {
       const cp = closestPointOnSegment(centerX, centerY, edge);
       const dist = Math.hypot(cp.x - centerX, cp.y - centerY);
@@ -71,7 +76,7 @@ export function findWallSnap(
     }
   }
 
-  for (const wall of project.walls) {
+  for (const wall of source.walls) {
     if (wall.id === excludeWallId) continue;
     const seg = wallSegment(wall);
     const cp = closestPointOnSegment(centerX, centerY, seg);
@@ -91,13 +96,13 @@ export function findWallSnap(
 /** Find the closest point on any room edge or wall segment to (px, py), ignoring
  * alignment/angle — used to snap a plain point (e.g. a wall endpoint) in place. */
 export function findPointSnap(
-  project: Project,
+  source: WallSnapSource,
   px: number,
   py: number,
   threshold = 16,
   excludeWallId?: string
 ): { x: number; y: number } | null {
-  const snap = findWallSnap(project, px, py, threshold, excludeWallId);
+  const snap = findWallSnap(source, px, py, threshold, excludeWallId);
   return snap ? { x: snap.x, y: snap.y } : null;
 }
 

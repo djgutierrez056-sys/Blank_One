@@ -1,4 +1,4 @@
-import { usePlannerStore } from '../../state/store';
+import { getActivePage, usePlannerStore } from '../../state/store';
 import type { FurnitureItem, Room, TextLabel, Wall } from '../../state/types';
 
 function NumberField({
@@ -28,13 +28,14 @@ function NumberField({
 
 export function PropertiesPanel() {
   const project = usePlannerStore((s) => s.project);
+  const activePage = usePlannerStore((s) => getActivePage(s.project));
   const selectedIds = usePlannerStore((s) => s.selectedIds);
   const updateEntity = usePlannerStore((s) => s.updateEntity);
 
-  const room = project.rooms.find((r) => selectedIds.length === 1 && r.id === selectedIds[0]);
-  const item = project.items.find((i) => selectedIds.length === 1 && i.id === selectedIds[0]);
-  const wall = project.walls.find((w) => selectedIds.length === 1 && w.id === selectedIds[0]);
-  const text = project.texts.find((t) => selectedIds.length === 1 && t.id === selectedIds[0]);
+  const room = activePage.rooms.find((r) => selectedIds.length === 1 && r.id === selectedIds[0]);
+  const item = activePage.items.find((i) => selectedIds.length === 1 && i.id === selectedIds[0]);
+  const wall = activePage.walls.find((w) => selectedIds.length === 1 && w.id === selectedIds[0]);
+  const text = activePage.texts.find((t) => selectedIds.length === 1 && t.id === selectedIds[0]);
   const entity = room ?? item ?? wall ?? text;
 
   if (selectedIds.length === 0) {

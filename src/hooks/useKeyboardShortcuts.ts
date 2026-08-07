@@ -39,6 +39,21 @@ export function useKeyboardShortcuts() {
         store.duplicateSelected();
         return;
       }
+      if (mod && (e.key === '=' || e.key === '+')) {
+        e.preventDefault();
+        store.setZoom(store.zoom * 1.15);
+        return;
+      }
+      if (mod && e.key === '-') {
+        e.preventDefault();
+        store.setZoom(store.zoom / 1.15);
+        return;
+      }
+      if (mod && e.key === '0') {
+        e.preventDefault();
+        store.setZoom(1);
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         store.deleteSelected();

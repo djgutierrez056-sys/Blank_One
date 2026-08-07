@@ -55,12 +55,19 @@ export interface TextLabel {
 
 export type Entity = Room | FurnitureItem | Wall | TextLabel;
 
-export interface Project {
+export interface Page {
+  id: string;
   name: string;
   rooms: Room[];
   items: FurnitureItem[];
   walls: Wall[];
   texts: TextLabel[];
+}
+
+export interface Project {
+  name: string;
+  pages: Page[];
+  activePageId: string;
   scale: number; // px per foot
   gridSnap: number; // feet
   showLabels: boolean;

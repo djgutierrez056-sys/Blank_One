@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type Konva from 'konva';
 import { Group, Rect } from 'react-konva';
 import type { Wall } from '../../state/types';
-import { usePlannerStore } from '../../state/store';
+import { getActivePage, usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
 
@@ -18,7 +18,7 @@ interface Props {
 export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef, toolMode }: Props) {
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const beginChange = usePlannerStore((s) => s.beginChange);
-  const project = usePlannerStore((s) => s.project);
+  const activePage = usePlannerStore((s) => getActivePage(s.project));
   const groupRef = useRef<Konva.Group>(null);
 
   return (
@@ -41,8 +41,8 @@ export function WallShape({ wall, isSelected, gridSnapPx, onSelect, registerRef,
         const rawEndX = rawX + wall.width * Math.cos(rad);
         const rawEndY = rawY + wall.width * Math.sin(rad);
 
-        const startSnap = findPointSnap(project, rawX, rawY, 16, wall.id);
-        const endSnap = findPointSnap(project, rawEndX, rawEndY, 16, wall.id);
+        const startSnap = findPointSnap(activePage, rawX, rawY, 16, wall.id);
+        const endSnap = findPointSnap(activePage, rawEndX, rawEndY, 16, wall.id);
 
         let newX = snapValue(rawX, gridSnapPx);
         let newY = snapValue(rawY, gridSnapPx);

@@ -169,6 +169,29 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped }: Prop
           <Line points={[width * 0.15, height * 0.8, width * 0.85, height * 0.8]} stroke={stroke} strokeWidth={1} />
         </Group>
       );
+    case 'bench':
+      return (
+        <Group>
+          <Rect y={height * 0.1} width={width} height={height * 0.35} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={2} />
+          <Rect y={height * 0.55} width={width} height={height * 0.35} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={2} />
+          <Line points={[width * 0.08, height * 0.1, width * 0.08, height]} stroke={stroke} strokeWidth={1.5} />
+          <Line points={[width * 0.92, height * 0.1, width * 0.92, height]} stroke={stroke} strokeWidth={1.5} />
+        </Group>
+      );
+    case 'fence': {
+      const postCount = Math.max(2, Math.round(width / 14));
+      const posts = [];
+      for (let i = 0; i < postCount; i++) {
+        const px = (i / (postCount - 1)) * width;
+        posts.push(<Line key={i} points={[px, -height, px, height * 3]} stroke={stroke} strokeWidth={1.5} />);
+      }
+      return (
+        <Group>
+          <Line points={[0, height / 2, width, height / 2]} stroke={stroke} strokeWidth={height} />
+          {posts}
+        </Group>
+      );
+    }
     case 'door':
       return (
         <Group>

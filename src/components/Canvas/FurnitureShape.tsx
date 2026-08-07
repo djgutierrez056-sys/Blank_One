@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import type Konva from 'konva';
 import { Group, Rect, Text } from 'react-konva';
 import type { FurnitureItem } from '../../state/types';
-import { usePlannerStore } from '../../state/store';
+import { getActivePage, usePlannerStore } from '../../state/store';
 import { snapAngle, snapValue } from '../../utils/geometry';
 import { findWallSnap, rectCenter, topLeftFromCenter } from '../../utils/wallSnap';
 import { FurnitureIcon } from './FurnitureIcon';
@@ -21,7 +21,7 @@ interface Props {
 export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registerRef, toolMode }: Props) {
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const beginChange = usePlannerStore((s) => s.beginChange);
-  const project = usePlannerStore((s) => s.project);
+  const activePage = usePlannerStore((s) => getActivePage(s.project));
   const groupRef = useRef<Konva.Group>(null);
   const sticksToWalls = WALL_STICKY_TYPES.has(item.catalogId);
 
@@ -49,7 +49,7 @@ export function FurnitureShape({ item, isSelected, gridSnapPx, onSelect, registe
 
         if (sticksToWalls) {
           const center = rectCenter(rawX, rawY, item.width, item.height, item.rotation);
-          const snap = findWallSnap(project, center.x, center.y);
+          const snap = findWallSnap(activePage, center.x, center.y);
           if (snap) {
             const topLeft = topLeftFromCenter(snap.x, snap.y, item.width, item.height, snap.angle);
             updateEntity(item.id, { x: topLeft.x, y: topLeft.y, rotation: snap.angle });
