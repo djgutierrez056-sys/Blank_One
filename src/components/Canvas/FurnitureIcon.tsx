@@ -77,6 +77,7 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
     case 'linen-cabinet':
     case 'wine-rack':
     case 'safe':
+    case 'laundry-cabinet':
       return (
         <Group>
           {base}
@@ -155,6 +156,14 @@ export function FurnitureIcon({ catalogId, width, height, color, flipped, flippe
         <Group>
           <Rect x={width * 0.15} y={0} width={width * 0.7} height={height * 0.3} fill={color} stroke={stroke} strokeWidth={1.5} cornerRadius={2} />
           <Ellipse x={width / 2} y={height * 0.65} radiusX={width * 0.4} radiusY={height * 0.32} fill={color} stroke={stroke} strokeWidth={1.5} />
+        </Group>
+      );
+    case 'toilet-paper-holder':
+      return (
+        <Group>
+          <Line points={[0, height / 2, width, height / 2]} stroke={stroke} strokeWidth={1.5} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) / 2} fill={color} stroke={stroke} strokeWidth={1.5} />
+          <Circle x={width / 2} y={height / 2} radius={Math.min(width, height) * 0.28} fill="none" stroke={stroke} strokeWidth={1} />
         </Group>
       );
     case 'bathtub':

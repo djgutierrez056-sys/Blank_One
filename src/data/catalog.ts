@@ -68,6 +68,7 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'sink-bath', name: 'Bathroom Sink', category: 'Bathroom', width: 2, height: 1.6, color: '#dfe6e8' },
   { id: 'linen-cabinet', name: 'Linen Cabinet', category: 'Bathroom', width: 2, height: 1.3, color: '#a9835a' },
   { id: 'mirror-bath', name: 'Bathroom Mirror', category: 'Bathroom', width: 2, height: 0.3, color: '#cfe0e8' },
+  { id: 'toilet-paper-holder', name: 'Toilet Paper Holder', category: 'Bathroom', width: 0.6, height: 0.6, color: '#f5f5f0' },
 
   // Laundry
   { id: 'washer', name: 'Washer', category: 'Laundry', width: 2.5, height: 2.5, color: '#c5ccd1' },
@@ -77,6 +78,7 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'laundry-basket', name: 'Laundry Basket', category: 'Laundry', width: 1.3, height: 1.3, color: '#e2c9a0' },
   { id: 'ironing-board', name: 'Ironing Board', category: 'Laundry', width: 1.3, height: 4, color: '#8a6a45' },
   { id: 'folding-table', name: 'Folding Table', category: 'Laundry', width: 3, height: 2, color: '#c9a876' },
+  { id: 'laundry-cabinet', name: 'Laundry Cabinet', category: 'Laundry', width: 3, height: 1.6, color: '#a9835a' },
 
   // Office
   { id: 'desk', name: 'Desk', category: 'Office', width: 4.5, height: 2.3, color: '#a9835a' },

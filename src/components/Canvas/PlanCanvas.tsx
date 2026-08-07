@@ -76,6 +76,7 @@ export function PlanCanvas() {
   const transformerRef = useRef<Konva.Transformer>(null);
   const nodeRefs = useRef<Map<string, Konva.Node>>(new Map());
   const justMarqueeSelectedRef = useRef(false);
+  const manualPanRef = useRef<{ startScreen: { x: number; y: number }; startPan: { x: number; y: number } } | null>(null);
 
   const [size, setSize] = useState({ width: 800, height: 600 });
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -227,6 +228,13 @@ export function PlanCanvas() {
       setTimeout(() => setEditingTextId(id), 0);
       return;
     }
+    // Right-click or middle-click drag always pans, regardless of tool —
+    // an easier-to-discover alternative to holding Space.
+    if (e.evt.button === 2 || e.evt.button === 1) {
+      e.evt.preventDefault();
+      manualPanRef.current = { startScreen: { x: e.evt.clientX, y: e.evt.clientY }, startPan: pan };
+      return;
+    }
     if (tool === 'select' && !spacePressed && e.target === stageRef.current) {
       const pos = stagePos();
       if (!pos) return;
@@ -245,7 +253,16 @@ export function PlanCanvas() {
     }
   }
 
-  function handleMouseMove() {
+  function handleMouseMove(e: Konva.KonvaEventObject<MouseEvent>) {
+    if (manualPanRef.current) {
+      const { startScreen, startPan } = manualPanRef.current;
+      setPan({
+        x: startPan.x + (e.evt.clientX - startScreen.x),
+        y: startPan.y + (e.evt.clientY - startScreen.y),
+      });
+      return;
+    }
+
     const pos = stagePos();
     if (pos) {
       setCursorPos(pos);
@@ -280,6 +297,10 @@ export function PlanCanvas() {
   }
 
   function handleMouseUp(e: Konva.KonvaEventObject<MouseEvent>) {
+    if (manualPanRef.current) {
+      manualPanRef.current = null;
+      return;
+    }
     if (selectStart && selectRect) {
       if (selectRect.w > 3 || selectRect.h > 3) {
         const marquee: Bounds = {
@@ -419,6 +440,7 @@ export function PlanCanvas() {
         onMouseUp={handleMouseUp}
         onClick={handleStageClick}
         onWheel={handleWheel}
+        onContextMenu={(e) => e.evt.preventDefault()}
         style={{
           cursor: spacePressed
             ? 'grab'
