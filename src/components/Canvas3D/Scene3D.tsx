@@ -185,7 +185,10 @@ export function Scene3D() {
       list.push(rectObstacle(wall.x / scale, wall.y / scale, toRad(wall.rotation), length / 2, 0, length, t));
     }
     for (const item of regularItems) {
-      if (NON_BLOCKING.has(item.catalogId)) continue;
+      // Elevated items (e.g. a microwave stacked on a table) already have
+      // whatever they're resting on as a ground-level obstacle; they don't
+      // need their own, or you couldn't walk under the table.
+      if (NON_BLOCKING.has(item.catalogId) || (item.elevation ?? 0) > 0) continue;
       const w = item.width / scale;
       const d = item.height / scale;
       list.push(rectObstacle(item.x / scale, item.y / scale, toRad(item.rotation), w / 2, d / 2, w, d));
@@ -250,8 +253,10 @@ export function Scene3D() {
           <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} />
         ))}
         {regularItems.map((item) => (
-          <group key={item.id} position={[item.x / scale, 0, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
-            <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
+          <group key={item.id} position={[item.x / scale, (item.elevation ?? 0) / scale, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
+            <group scale={[1, item.heightScale ?? 1, 1]}>
+              <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
+            </group>
           </group>
         ))}
         {walkMode ? (
