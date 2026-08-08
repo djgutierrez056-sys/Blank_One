@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
@@ -5,6 +6,7 @@ import type { FurnitureItem, Page, Room, Wall as WallEntity } from '../../state/
 import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D } from './Furniture3D';
 import { Box, toRad } from './primitives';
+import { WalkControls, WalkHint } from './WalkControls';
 
 const WALL_H = 8;
 const WALL_COLOR = '#d9d4c8';
@@ -209,6 +211,8 @@ export function Scene3D() {
   const project = usePlannerStore((s) => s.project);
   const page = getActivePage(project);
   const scale = project.scale;
+  const walkMode = usePlannerStore((s) => s.walkMode);
+  const [locked, setLocked] = useState(false);
 
   const doorWindowItems = page.items.filter((i) => DOOR_KINDS.has(i.catalogId) || WINDOW_KINDS.has(i.catalogId));
   const regularItems = page.items.filter((i) => !DOOR_KINDS.has(i.catalogId) && !WINDOW_KINDS.has(i.catalogId));
@@ -219,8 +223,12 @@ export function Scene3D() {
   const spanFt = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 12);
 
   return (
-    <div className="h-full w-full bg-slate-200">
-      <Canvas shadows camera={{ position: [centerX + spanFt * 0.85, spanFt * 0.95, centerZ + spanFt * 0.85], fov: 40 }}>
+    <div className="relative h-full w-full bg-slate-200">
+      <Canvas
+        key={walkMode ? 'walk' : 'orbit'}
+        shadows
+        camera={{ position: [centerX + spanFt * 0.85, spanFt * 0.95, centerZ + spanFt * 0.85], fov: 40 }}
+      >
         <color attach="background" args={['#dbe3ea']} />
         <ambientLight intensity={0.7} />
         <directionalLight
@@ -253,13 +261,18 @@ export function Scene3D() {
             <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
           </group>
         ))}
-        <OrbitControls
-          target={[centerX, 1, centerZ]}
-          maxPolarAngle={Math.PI / 2.1}
-          minDistance={5}
-          maxDistance={spanFt * 4}
-        />
+        {walkMode ? (
+          <WalkControls spawn={[centerX, 0, centerZ]} onLockChange={setLocked} />
+        ) : (
+          <OrbitControls
+            target={[centerX, 1, centerZ]}
+            maxPolarAngle={Math.PI / 2.1}
+            minDistance={5}
+            maxDistance={spanFt * 4}
+          />
+        )}
       </Canvas>
+      {walkMode && <WalkHint active={locked} />}
     </div>
   );
 }

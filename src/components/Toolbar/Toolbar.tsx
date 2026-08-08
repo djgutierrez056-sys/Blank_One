@@ -58,6 +58,8 @@ export function Toolbar() {
   const setLockedPanelOpen = usePlannerStore((s) => s.setLockedPanelOpen);
   const view3D = usePlannerStore((s) => s.view3D);
   const setView3D = usePlannerStore((s) => s.setView3D);
+  const walkMode = usePlannerStore((s) => s.walkMode);
+  const setWalkMode = usePlannerStore((s) => s.setWalkMode);
   const project = usePlannerStore((s) => s.project);
   const setProject = usePlannerStore((s) => s.setProject);
   const newProject = usePlannerStore((s) => s.newProject);
@@ -184,6 +186,15 @@ export function Toolbar() {
 
       <div className="flex-1" />
 
+      {view3D && (
+        <Button
+          title={walkMode ? 'Exit walkthrough (Esc)' : 'Walk through this plan in first person'}
+          active={walkMode}
+          onClick={() => setWalkMode(!walkMode)}
+        >
+          {walkMode ? 'Exit Walk' : 'Walk'}
+        </Button>
+      )}
       <Button
         title={view3D ? 'Back to the 2D floor plan' : 'View this plan in 3D'}
         active={view3D}

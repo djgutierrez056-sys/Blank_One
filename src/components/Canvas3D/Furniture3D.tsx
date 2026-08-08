@@ -39,8 +39,6 @@ const MED_APPLIANCE = new Set(['dishwasher', 'stove', 'washer', 'dryer']);
 const SHORT_APPLIANCE = new Set(['microwave', 'printer']);
 const SINKS = new Set(['sink-kitchen', 'sink-bath', 'utility-sink']);
 const FLAT_PANELS = new Set(['mirror', 'mirror-bath', 'floor-mirror', 'whiteboard']);
-const CARS = new Set(['car', 'suv']);
-const BIKES = new Set(['motorcycle', 'dirt-bike', 'scooter', 'bicycle']);
 
 /** Renders one catalog item as a small group of primitives in local plan space
  * — x runs 0..w (feet), z runs 0..d (feet), y is up from the floor. Doors and
@@ -325,37 +323,6 @@ export function Furniture3D({ item, w, d }: { item: FurnitureItem; w: number; d:
     return (
       <group>
         <Box x={cx} y={baseY + h / 2} z={cz} w={w} h={h} d={Math.max(0.08, d)} color={id === 'whiteboard' ? '#ffffff' : color} />
-      </group>
-    );
-  }
-
-  if (CARS.has(id)) {
-    const bodyH = 2.4;
-    const wheelR = 0.9;
-    return (
-      <group>
-        <Box x={cx} y={bodyH * 0.35} z={cz} w={w} h={bodyH * 0.55} d={d} color={color} />
-        <Box x={cx} y={bodyH * 0.75} z={cz} w={w * 0.55} h={bodyH * 0.5} d={d * 0.82} color={darken(color, 0.2)} />
-        {[
-          [wheelR * 1.1, wheelR * 1.1],
-          [wheelR * 1.1, d - wheelR * 1.1],
-          [w - wheelR * 1.1, wheelR * 1.1],
-          [w - wheelR * 1.1, d - wheelR * 1.1],
-        ].map(([x, z], i) => (
-          <Cyl key={i} x={x} y={wheelR} z={z} rTop={wheelR} h={0.5} color="#1c1c1c" segments={14} />
-        ))}
-      </group>
-    );
-  }
-
-  if (BIKES.has(id)) {
-    const wheelR = d * 0.42;
-    return (
-      <group>
-        <Torus x={w * 0.18} y={wheelR} z={cz} r={wheelR} tube={0.05} color="#1c1c1c" rotX={Math.PI / 2} />
-        <Torus x={w * 0.82} y={wheelR} z={cz} r={wheelR} tube={0.05} color="#1c1c1c" rotX={Math.PI / 2} />
-        <Box x={cx} y={wheelR * 1.5} z={cz} w={w * 0.55} h={0.15} d={0.15} color={color} />
-        <Box x={cx} y={wheelR * 1.9} z={cz} w={0.15} h={wheelR * 0.9} d={0.15} color={color} />
       </group>
     );
   }
