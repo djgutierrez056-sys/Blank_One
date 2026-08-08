@@ -55,7 +55,7 @@ export function PaintPanel({
       <div className="flex flex-col gap-3 p-4">
         <div>
           <p className="mb-1.5 text-xs font-medium text-slate-500">Color</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {PALETTE.map((color) => (
               <button
                 key={color}
@@ -67,6 +67,19 @@ export function PaintPanel({
                 }`}
               />
             ))}
+            <label
+              title="Pick any color"
+              className="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-dashed border-slate-300 text-sm"
+              style={current?.color && !PALETTE.includes(current.color) ? { backgroundColor: current.color, borderStyle: 'solid', borderColor: '#3b82f6' } : undefined}
+            >
+              {!(current?.color && !PALETTE.includes(current.color)) && '🎨'}
+              <input
+                type="color"
+                value={current?.color ?? '#d9d4c8'}
+                onChange={(e) => onPick({ color: e.target.value, texture: current?.texture })}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
           </div>
         </div>
         <div>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { ChatMessage, Entity, FurnitureItem, Page, Project, Room, TextLabel, ToolMode, Wall } from './types';
 import { getCatalogEntry } from '../data/catalog';
 import { loadFromLocalStorage, saveToLocalStorage } from '../utils/persistence';
+import { rectCenter } from '../utils/wallSnap';
 
 const HISTORY_LIMIT = 50;
 const DUPLICATE_OFFSET = 20;
@@ -129,6 +130,7 @@ interface PlannerState extends HistoryState {
   addItemFromCatalog: (catalogId: string, x: number, y: number) => string;
   updateEntity: (id: string, changes: EntityChanges, opts?: { commit?: boolean }) => void;
   deleteSelected: () => void;
+  scaleRoomAndContents: (roomId: string, factor: number) => void;
 
   copy: () => void;
   paste: () => void;
@@ -506,6 +508,61 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         texts: p.texts.filter((t) => !idSet.has(t.id)),
       })),
       selectedIds: s.selectedIds.filter((sid) => !idSet.has(sid)),
+    }));
+    persist(get().project);
+  },
+
+  // Fixes a room that was drawn (along with its furniture, doors and
+  // windows) at the wrong real-world scale: shrinks/grows the room from its
+  // top-left corner and carries everything currently inside it along by
+  // the same factor -- position AND size -- so the whole room stays
+  // proportional instead of just resizing the walls on their own.
+  scaleRoomAndContents: (roomId, factor) => {
+    if (!Number.isFinite(factor) || factor <= 0) return;
+    const page = getActivePage(get().project);
+    const room = page.rooms.find((r) => r.id === roomId);
+    if (!room || room.locked) return;
+    get().beginChange();
+    const rad = (room.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const toLocal = (x: number, y: number) => {
+      const dx = x - room.x;
+      const dy = y - room.y;
+      return { lx: dx * cos + dy * sin, ly: -dx * sin + dy * cos };
+    };
+    const toWorld = (lx: number, ly: number) => ({
+      x: room.x + lx * cos - ly * sin,
+      y: room.y + lx * sin + ly * cos,
+    });
+    const margin = room.wallThickness + 4;
+
+    set((s) => ({
+      project: updateActivePage(s.project, (p) => ({
+        ...p,
+        rooms: p.rooms.map((r) =>
+          r.id === roomId ? { ...r, width: r.width * factor, height: r.height * factor, wallThickness: r.wallThickness * factor } : r
+        ),
+        items: p.items.map((item) => {
+          // Containment uses the item's true center (accounting for its own
+          // rotation); repositioning scales its stored pivot the same way.
+          const center = rectCenter(item.x, item.y, item.width, item.height, item.rotation);
+          const atCenter = toLocal(center.x, center.y);
+          if (atCenter.lx < -margin || atCenter.ly < -margin || atCenter.lx > room.width + margin || atCenter.ly > room.height + margin) {
+            return item;
+          }
+          const atPivot = toLocal(item.x, item.y);
+          const newPivot = toWorld(atPivot.lx * factor, atPivot.ly * factor);
+          return {
+            ...item,
+            x: newPivot.x,
+            y: newPivot.y,
+            width: item.width * factor,
+            height: item.height * factor,
+            elevation: item.elevation !== undefined ? item.elevation * factor : item.elevation,
+          };
+        }),
+      })),
     }));
     persist(get().project);
   },

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { getActivePage, usePlannerStore } from '../../state/store';
 import type { FurnitureItem, Room, TextLabel, Wall } from '../../state/types';
 import { WALL_TEXTURES } from '../Canvas3D/textures';
@@ -68,6 +69,8 @@ export function PropertiesPanel() {
   const selectedIds = usePlannerStore((s) => s.selectedIds);
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const toggleLockSelected = usePlannerStore((s) => s.toggleLockSelected);
+  const scaleRoomAndContents = usePlannerStore((s) => s.scaleRoomAndContents);
+  const [scalePct, setScalePct] = useState('100');
 
   const room = activePage.rooms.find((r) => selectedIds.length === 1 && r.id === selectedIds[0]);
   const item = activePage.items.find((i) => selectedIds.length === 1 && i.id === selectedIds[0]);
@@ -265,6 +268,48 @@ export function PropertiesPanel() {
           <div className="flex flex-col gap-1.5">
             <span className="text-xs text-slate-600">Wall Texture (3D)</span>
             <TextureSwatches value={room.wallTexture} onPick={(id) => commit({ wallTexture: id })} disabled={entity.locked} />
+          </div>
+
+          <div className="flex flex-col gap-1.5 border-t border-slate-200 pt-3">
+            <span className="text-xs font-medium text-slate-600">Scale room &amp; contents</span>
+            <span className="text-[11px] text-slate-400">
+              Resizes the room and every item, door, and window inside it together, so a room that was drawn at the wrong
+              scale (and everything in it) becomes proportional again.
+            </span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                value={scalePct}
+                onChange={(e) => setScalePct(e.target.value)}
+                disabled={entity.locked}
+                className="w-20 rounded border border-slate-300 px-2 py-1 text-right text-xs disabled:bg-slate-100 disabled:text-slate-400"
+              />
+              <span className="text-xs text-slate-500">%</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const pct = Number(scalePct);
+                  if (Number.isFinite(pct) && pct > 0) scaleRoomAndContents(room.id, pct / 100);
+                }}
+                disabled={entity.locked}
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Apply
+              </button>
+            </div>
+            <div className="flex gap-1.5">
+              {[25, 50, 75, 150, 200].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => scaleRoomAndContents(room.id, pct / 100)}
+                  disabled={entity.locked}
+                  className="rounded border border-slate-200 px-1.5 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
           </div>
         </>
       )}
