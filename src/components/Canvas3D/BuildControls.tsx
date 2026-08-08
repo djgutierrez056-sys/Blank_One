@@ -32,6 +32,9 @@ export interface CrosshairTarget {
    * (floor, tabletop) — placement is disallowed on walls/vertical faces so
    * items don't end up floating mid-air stuck to a wall. */
   canPlace: boolean;
+  /** The room whose wall this point is on, if any — lets the paint tool
+   * repaint a room's walls by clicking one, without an itemId being set. */
+  wallRoomId: string | null;
 }
 
 export interface ItemRect {
@@ -47,6 +50,15 @@ function findItem(object: THREE.Object3D): { id: string; name: string } | null {
   let cur: THREE.Object3D | null = object;
   while (cur) {
     if (cur.userData?.itemId) return { id: cur.userData.itemId as string, name: (cur.userData.itemName as string) ?? '' };
+    cur = cur.parent;
+  }
+  return null;
+}
+
+function findWallRoom(object: THREE.Object3D): string | null {
+  let cur: THREE.Object3D | null = object;
+  while (cur) {
+    if (cur.userData?.wallRoomId) return cur.userData.wallRoomId as string;
     cur = cur.parent;
   }
   return null;
@@ -109,6 +121,7 @@ export function BuildControls({
   hotbarIndex,
   gridSnapFt,
   getItemRect,
+  paint,
   onHotbarIndexChange,
   onTargetChange,
   onPlace,
@@ -117,12 +130,14 @@ export function BuildControls({
   onDeleteItem,
   onMoveItem,
   onCornerResize,
+  onPaintWall,
 }: {
   active: boolean;
   hotbar: string[];
   hotbarIndex: number;
   gridSnapFt: number;
   getItemRect: (id: string) => ItemRect | undefined;
+  paint: { color?: string; texture?: string } | null;
   onHotbarIndexChange: (i: number) => void;
   onTargetChange: (target: CrosshairTarget | null) => void;
   onPlace: (catalogId: string, point: [number, number, number], yawDeg: number) => void;
@@ -131,6 +146,7 @@ export function BuildControls({
   onDeleteItem: (itemId: string) => void;
   onMoveItem: (itemId: string, x: number, y: number, elevation: number) => void;
   onCornerResize: (itemId: string, changes: { x: number; y: number; width: number; height: number }) => void;
+  onPaintWall: (roomId: string) => void;
 }) {
   const { camera, scene } = useThree();
   const targetRef = useRef<CrosshairTarget | null>(null);
@@ -144,6 +160,8 @@ export function BuildControls({
   getItemRectRef.current = getItemRect;
   const gridSnapRef = useRef(gridSnapFt);
   gridSnapRef.current = gridSnapFt;
+  const paintRef = useRef(paint);
+  paintRef.current = paint;
   const previewRef = useRef<THREE.Mesh>(null);
   const previewMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
   const dragPreviewRef = useRef<THREE.Mesh>(null);
@@ -173,7 +191,7 @@ export function BuildControls({
       } else if (e.code === 'KeyG') {
         const t = targetRef.current;
         const catalogId = hotbarRef.current[hotbarIndexRef.current];
-        if (t?.canPlace && catalogId) {
+        if (t?.canPlace && catalogId && !paintRef.current) {
           const yawDeg = (-camera.rotation.y * 180) / Math.PI;
           onPlace(catalogId, t.point, yawDeg);
         }
@@ -195,6 +213,10 @@ export function BuildControls({
     const mousedown = (e: MouseEvent) => {
       if (!activeRef.current || dragRef.current) return;
       const t = targetRef.current;
+      if (e.button === 0 && paintRef.current && t?.wallRoomId && !t.itemId) {
+        onPaintWall(t.wallRoomId);
+        return;
+      }
       if (!t?.itemId) return;
       if (e.button === 0) {
         const rect = getItemRectRef.current(t.itemId);
@@ -252,11 +274,17 @@ export function BuildControls({
       window.removeEventListener('mouseup', mouseup);
       window.removeEventListener('contextmenu', contextmenu);
     };
-  }, [camera, onHotbarIndexChange, onPlace, onResizeItem, onRotateItem, onDeleteItem, onMoveItem, onCornerResize]);
+  }, [camera, onHotbarIndexChange, onPlace, onResizeItem, onRotateItem, onDeleteItem, onMoveItem, onCornerResize, onPaintWall]);
 
   const raycaster = useRef(new THREE.Raycaster());
   const plane = useRef(new THREE.Plane());
   const planeHit = useRef(new THREE.Vector3());
+
+  // The ghost preview meshes live in this same scene graph — without this
+  // exclusion the crosshair ray can hit its own preview box (positioned
+  // exactly along the ray from the previous frame) instead of the real
+  // floor/item behind it, feeding back into a runaway height each frame.
+  const raycastTargets = () => scene.children.filter((c) => c !== previewRef.current && c !== dragPreviewRef.current);
 
   useFrame(() => {
     if (!active) {
@@ -284,7 +312,7 @@ export function BuildControls({
       if (drag.mode === 'move') {
         raycaster.current.set(camera.position, dir);
         raycaster.current.far = MAX_REACH;
-        const hits = raycaster.current.intersectObjects(scene.children, true);
+        const hits = raycaster.current.intersectObjects(raycastTargets(), true);
         let hitPoint: THREE.Vector3 | null = null;
         for (const hit of hits) {
           if (!hit.object.visible) continue;
@@ -357,7 +385,7 @@ export function BuildControls({
 
     raycaster.current.set(camera.position, dir);
     raycaster.current.far = MAX_REACH;
-    const hits = raycaster.current.intersectObjects(scene.children, true);
+    const hits = raycaster.current.intersectObjects(raycastTargets(), true);
     let next: CrosshairTarget | null = null;
     for (const hit of hits) {
       if (!hit.object.visible) continue;
@@ -372,12 +400,14 @@ export function BuildControls({
         itemId: found?.id ?? null,
         itemName: found?.name ?? null,
         canPlace,
+        wallRoomId: found ? null : findWallRoom(hit.object),
       };
       break;
     }
     const changed =
       (next?.itemId ?? null) !== (targetRef.current?.itemId ?? null) ||
       (next?.canPlace ?? null) !== (targetRef.current?.canPlace ?? null) ||
+      (next?.wallRoomId ?? null) !== (targetRef.current?.wallRoomId ?? null) ||
       (next === null) !== (targetRef.current === null);
     targetRef.current = next;
     if (changed) onTargetChange(next);
@@ -387,7 +417,7 @@ export function BuildControls({
     // way the player is currently facing (matching what G would place).
     const catalogId = hotbarRef.current[hotbarIndexRef.current];
     if (previewRef.current && previewMaterialRef.current) {
-      if (next && catalogId) {
+      if (next && catalogId && !paintRef.current) {
         const entry = getCatalogEntry(catalogId);
         const w = entry?.width ?? 2;
         const d = entry?.height ?? 2;

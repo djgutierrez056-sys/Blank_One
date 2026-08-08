@@ -14,6 +14,7 @@ import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './col
 import { ItemGizmo, type GizmoMode } from './EditControls';
 import { AddItemPanel } from './AddItemPanel';
 import { InventoryPanel } from './InventoryPanel';
+import { PaintPanel, type Paint } from './PaintPanel';
 import { BuildControls, DEFAULT_HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
 import { getCatalogEntry } from '../../data/catalog';
 import { getLightSource } from './lights';
@@ -172,6 +173,8 @@ export function Scene3D() {
   const [hotbarIndex, setHotbarIndex] = useState(0);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [buildModeOn, setBuildModeOn] = useState(false);
+  const [paintOpen, setPaintOpen] = useState(false);
+  const [heldPaint, setHeldPaint] = useState<Paint | null>(null);
   const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null);
   const lastPlacePointRef = useRef<[number, number, number] | null>(null);
   const handleTargetChange = (target: CrosshairTarget | null) => {
@@ -319,19 +322,32 @@ export function Scene3D() {
     );
   };
 
+  const handlePaintWall = (roomId: string) => {
+    if (!heldPaint) return;
+    updateEntity(roomId, { wallColor: heldPaint.color, wallTexture: heldPaint.texture }, { commit: true });
+  };
+
+  const handlePaintPick = (paint: Paint | null) => {
+    setHeldPaint(paint);
+    if (!paint) setPaintOpen(false);
+  };
+
   useEffect(() => {
     if (!walkMode) return;
     const down = (e: KeyboardEvent) => {
       if (e.code === 'KeyI' && !sitting) {
         document.exitPointerLock();
         setInventoryOpen((open) => !open);
-      } else if (e.code === 'KeyB' && !sitting && !inventoryOpen) {
+      } else if (e.code === 'KeyB' && !sitting && !inventoryOpen && !paintOpen) {
         setBuildModeOn((on) => !on);
+      } else if (e.code === 'KeyP' && !sitting && buildModeOn) {
+        document.exitPointerLock();
+        setPaintOpen((open) => !open);
       }
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [walkMode, sitting, inventoryOpen]);
+  }, [walkMode, sitting, inventoryOpen, buildModeOn, paintOpen]);
 
   return (
     <div className="relative h-full w-full bg-slate-200">
@@ -380,7 +396,9 @@ export function Scene3D() {
           return (
             <group key={room.id} position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
               <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
-              <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} />
+              <group userData={{ wallRoomId: room.id }}>
+                <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} />
+              </group>
             </group>
           );
         })}
@@ -445,11 +463,12 @@ export function Scene3D() {
         })}
         {walkMode && (
           <BuildControls
-            active={locked && buildModeOn && !sitting && !inventoryOpen}
+            active={locked && buildModeOn && !sitting && !inventoryOpen && !paintOpen}
             hotbar={hotbar}
             hotbarIndex={hotbarIndex}
             gridSnapFt={project.gridSnap}
             getItemRect={getItemRect}
+            paint={heldPaint}
             onHotbarIndexChange={setHotbarIndex}
             onTargetChange={handleTargetChange}
             onPlace={handleBuildPlace}
@@ -458,6 +477,7 @@ export function Scene3D() {
             onDeleteItem={handleBuildDelete}
             onMoveItem={handleMoveItem}
             onCornerResize={handleCornerResize}
+            onPaintWall={handlePaintWall}
           />
         )}
         {walkMode ? (
@@ -488,12 +508,17 @@ export function Scene3D() {
           <span className="rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press B to build</span>
         </div>
       )}
-      {walkMode && locked && buildModeOn && !sitting && !inventoryOpen && (
+      {walkMode && locked && buildModeOn && !sitting && !inventoryOpen && !paintOpen && (
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30" />
           <div className="absolute inset-x-0 top-20 flex justify-center">
             <div className="rounded-md bg-black/60 px-3 py-1.5 text-center text-sm text-white">
-              {crosshairTarget?.itemId ? (
+              {heldPaint ? (
+                <span className="text-xs text-white/70">
+                  <span className="mr-1.5 inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: heldPaint.color ?? '#d9d4c8' }} />
+                  {crosshairTarget?.wallRoomId ? 'Left-click this wall to paint it' : 'Aim at a wall to paint · P for palette'}
+                </span>
+              ) : crosshairTarget?.itemId ? (
                 <>
                   <span className="font-medium">{crosshairTarget.itemName}</span>
                   <br />
@@ -507,6 +532,8 @@ export function Scene3D() {
                 <span className="text-xs text-white/70">G to place {hotbarLabel(hotbar[hotbarIndex])} here</span>
               ) : crosshairTarget?.canPlace ? (
                 <span className="text-xs text-white/70">Slot empty &middot; press I to assign an item</span>
+              ) : crosshairTarget?.wallRoomId ? (
+                <span className="text-xs text-white/70">Press P to pick a paint, then click this wall</span>
               ) : (
                 <span className="text-xs text-white/70">Look at a floor or surface to build</span>
               )}
@@ -528,7 +555,7 @@ export function Scene3D() {
               ))}
             </div>
             <span className="pointer-events-auto rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">
-              Press I for full inventory &middot; B to stop building
+              Press I for full inventory &middot; P to paint &middot; B to stop building
             </span>
           </div>
         </div>
@@ -541,6 +568,11 @@ export function Scene3D() {
             onAssignSlot={(slot, catalogId) => setHotbar((h) => h.map((c, i) => (i === slot ? catalogId : c)))}
             onClose={() => setInventoryOpen(false)}
           />
+        </div>
+      )}
+      {walkMode && paintOpen && (
+        <div className="pointer-events-none absolute inset-0">
+          <PaintPanel current={heldPaint} onPick={handlePaintPick} onClose={() => setPaintOpen(false)} />
         </div>
       )}
       {editingEnabled && !inventoryOpen && (
