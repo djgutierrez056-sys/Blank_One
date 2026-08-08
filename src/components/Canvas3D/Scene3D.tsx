@@ -7,12 +7,13 @@ import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D } from './Furniture3D';
 import { Door3D } from './Door3D';
 import { Box, toRad } from './primitives';
+import { SurfaceBox } from './textures';
 import { WalkControls, WalkHint, type DoorTarget } from './WalkControls';
 import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } from './wallLayout';
 import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
 
 const WALL_H = 8;
-const WALL_COLOR = '#d9d4c8';
+const DEFAULT_WALL_COLOR = '#d9d4c8';
 const DOOR_H = 6.75;
 const WINDOW_SILL = 2.5;
 const WINDOW_HEADER = 6.5;
@@ -20,18 +21,34 @@ const WINDOW_HEADER = 6.5;
 // Flat/wall-mounted items a walker should be able to step through.
 const NON_BLOCKING = new Set(['rug', 'mirror', 'mirror-bath', 'floor-mirror', 'whiteboard']);
 
-function WallSegments({ segments }: { segments: WallSegment[] }) {
+function WallSegments({ segments, wallColor, wallTexture }: { segments: WallSegment[]; wallColor?: string; wallTexture?: string }) {
+  const color = wallColor ?? DEFAULT_WALL_COLOR;
   return (
     <>
       {segments.map((seg, i) => {
         if (seg.kind === 'solid') {
-          return <Box key={i} x={seg.x} y={WALL_H / 2} z={seg.z} w={seg.w} h={WALL_H} d={seg.d} color={WALL_COLOR} castShadow={false} />;
+          return (
+            <SurfaceBox
+              key={i}
+              x={seg.x}
+              y={WALL_H / 2}
+              z={seg.z}
+              w={seg.w}
+              h={WALL_H}
+              d={seg.d}
+              color={color}
+              textureId={wallTexture}
+              textureWidthFt={seg.w}
+              textureHeightFt={WALL_H}
+              castShadow={false}
+            />
+          );
         }
         if (seg.kind === 'door') {
           // Only the transom above the doorway — the leaf itself is a
           // separate Door3D positioned by the door item's own transform.
           return (
-            <Box
+            <SurfaceBox
               key={i}
               x={seg.x}
               y={DOOR_H + (WALL_H - DOOR_H) / 2}
@@ -39,7 +56,10 @@ function WallSegments({ segments }: { segments: WallSegment[] }) {
               w={seg.w}
               h={WALL_H - DOOR_H}
               d={seg.d}
-              color={WALL_COLOR}
+              color={color}
+              textureId={wallTexture}
+              textureWidthFt={seg.w}
+              textureHeightFt={WALL_H}
               castShadow={false}
             />
           );
@@ -47,7 +67,19 @@ function WallSegments({ segments }: { segments: WallSegment[] }) {
         // window
         return (
           <group key={i}>
-            <Box x={seg.x} y={WINDOW_SILL / 2} z={seg.z} w={seg.w} h={WINDOW_SILL} d={seg.d} color={WALL_COLOR} castShadow={false} />
+            <SurfaceBox
+              x={seg.x}
+              y={WINDOW_SILL / 2}
+              z={seg.z}
+              w={seg.w}
+              h={WINDOW_SILL}
+              d={seg.d}
+              color={color}
+              textureId={wallTexture}
+              textureWidthFt={seg.w}
+              textureHeightFt={WALL_H}
+              castShadow={false}
+            />
             <Box
               x={seg.x}
               y={WINDOW_SILL + (WINDOW_HEADER - WINDOW_SILL) / 2}
@@ -59,7 +91,19 @@ function WallSegments({ segments }: { segments: WallSegment[] }) {
               opacity={0.5}
               castShadow={false}
             />
-            <Box x={seg.x} y={WINDOW_HEADER + (WALL_H - WINDOW_HEADER) / 2} z={seg.z} w={seg.w} h={WALL_H - WINDOW_HEADER} d={seg.d} color={WALL_COLOR} castShadow={false} />
+            <SurfaceBox
+              x={seg.x}
+              y={WINDOW_HEADER + (WALL_H - WINDOW_HEADER) / 2}
+              z={seg.z}
+              w={seg.w}
+              h={WALL_H - WINDOW_HEADER}
+              d={seg.d}
+              color={color}
+              textureId={wallTexture}
+              textureWidthFt={seg.w}
+              textureHeightFt={WALL_H}
+              castShadow={false}
+            />
           </group>
         );
       })}
@@ -195,7 +239,7 @@ export function Scene3D() {
           return (
             <group key={room.id} position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
               <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
-              <WallSegments segments={segments} />
+              <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} />
             </group>
           );
         })}

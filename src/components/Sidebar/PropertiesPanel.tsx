@@ -1,5 +1,37 @@
 import { getActivePage, usePlannerStore } from '../../state/store';
 import type { FurnitureItem, Room, TextLabel, Wall } from '../../state/types';
+import { WALL_TEXTURES } from '../Canvas3D/textures';
+
+function TextureSwatches({ value, onPick, disabled }: { value: string | undefined; onPick: (id: string | undefined) => void; disabled?: boolean }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => onPick(undefined)}
+        disabled={disabled}
+        title="Plain color"
+        className={`flex h-8 w-8 items-center justify-center rounded border text-[9px] text-slate-500 ${
+          !value ? 'border-blue-400 ring-1 ring-blue-400' : 'border-slate-300'
+        } bg-white disabled:cursor-not-allowed disabled:opacity-40`}
+      >
+        None
+      </button>
+      {WALL_TEXTURES.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          onClick={() => onPick(t.id)}
+          disabled={disabled}
+          title={t.label}
+          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}textures/walls/${t.file})` }}
+          className={`h-8 w-8 rounded border bg-cover bg-center ${
+            value === t.id ? 'border-blue-400 ring-1 ring-blue-400' : 'border-slate-300'
+          } disabled:cursor-not-allowed disabled:opacity-40`}
+        />
+      ))}
+    </div>
+  );
+}
 
 function NumberField({
   label,
@@ -192,16 +224,34 @@ export function PropertiesPanel() {
       </label>
 
       {room && (
-        <NumberField
-          label="Wall (in)"
-          value={room.wallThickness * (12 / scale)}
-          step={0.5}
-          onCommit={(v) => commit({ wallThickness: (v / 12) * scale })}
-          disabled={entity.locked}
-        />
+        <>
+          <NumberField
+            label="Wall (in)"
+            value={room.wallThickness * (12 / scale)}
+            step={0.5}
+            onCommit={(v) => commit({ wallThickness: (v / 12) * scale })}
+            disabled={entity.locked}
+          />
+
+          <label className="flex items-center justify-between text-xs text-slate-600">
+            Wall Color (3D)
+            <input
+              type="color"
+              value={room.wallColor ?? '#d9d4c8'}
+              onChange={(e) => commit({ wallColor: e.target.value })}
+              disabled={entity.locked}
+              className="h-7 w-14 cursor-pointer rounded border border-slate-300 disabled:cursor-not-allowed"
+            />
+          </label>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-600">Wall Texture (3D)</span>
+            <TextureSwatches value={room.wallTexture} onPick={(id) => commit({ wallTexture: id })} disabled={entity.locked} />
+          </div>
+        </>
       )}
 
-      {item && item.catalogId === 'door' && (
+      {item && (item.catalogId === 'door' || item.catalogId === 'sliding-door') && (
         <div className="flex flex-col gap-2">
           <button
             onClick={() => updateEntity(item.id, { flipped: !item.flipped }, { commit: true })}
@@ -218,6 +268,11 @@ export function PropertiesPanel() {
             Flip hinge ({item.flippedX ? 'right' : 'left'})
           </button>
           <p className="text-[11px] text-slate-400">Tip: double-click a door to flip swing, Shift+double-click to flip hinge.</p>
+
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs text-slate-600">Door Finish (3D)</span>
+            <TextureSwatches value={item.texture} onPick={(id) => updateEntity(item.id, { texture: id }, { commit: true })} disabled={item.locked} />
+          </div>
         </div>
       )}
     </div>

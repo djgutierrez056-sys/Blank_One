@@ -1,4 +1,4 @@
-# 3D model credits
+# 3D model and texture credits
 
 `public/models/furniture/` — Furniture Kit by Kenney (https://kenney.nl/assets/furniture-kit), CC0. No attribution required.
 
@@ -27,3 +27,12 @@
 
 Not sourced: `ironing-board` — no reasonable free match found; still renders as a
 procedural placeholder in `Furniture3D.tsx`.
+
+## Wall/door textures
+
+`public/textures/walls/`, all from ambientCG (https://ambientcg.com), CC0,
+downscaled to 512×512 JPEGs from the original 1K source:
+- `brick.jpg` — Bricks097
+- `wood-panel.jpg` — WoodSiding008
+- `tile.jpg` — Tiles107
+- `plaster.jpg` — PaintedPlaster017

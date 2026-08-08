@@ -11,6 +11,8 @@ export interface Room {
   labelY: number;
   fill: string;
   wallThickness: number;
+  wallColor?: string; // 3D-only; undefined = the default wall color
+  wallTexture?: string; // 3D-only texture id (see textures.ts), undefined = plain color
   locked?: boolean;
 }
 
@@ -27,6 +29,9 @@ export interface FurnitureItem {
   label: string;
   flipped?: boolean; // for doors: which side of the wall it swings into
   flippedX?: boolean; // for doors: which side of the opening the hinge is on
+  texture?: string; // for doors, 3D-only finish texture id (see textures.ts)
+  elevation?: number; // 3D-only: height of the item's base above the floor, same units as x/y
+  heightScale?: number; // 3D-only: vertical scale multiplier for the 3D model, default 1
   locked?: boolean;
 }
 

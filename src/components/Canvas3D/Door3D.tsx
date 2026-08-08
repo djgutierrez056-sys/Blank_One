@@ -1,5 +1,6 @@
 import type { FurnitureItem } from '../../state/types';
-import { toRad, Box } from './primitives';
+import { toRad } from './primitives';
+import { SurfaceBox } from './textures';
 
 const DOOR_H = 6.75;
 const LEAF_THICKNESS = 0.15;
@@ -21,7 +22,18 @@ export function Door3D({ item, scale, open }: { item: FurnitureItem; scale: numb
   return (
     <group position={[item.x / scale, 0, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
       <group position={[hingeX, 0, t / 2]} rotation={[0, rot, 0]}>
-        <Box x={w / 2} y={DOOR_H / 2} z={0} w={w} h={DOOR_H} d={LEAF_THICKNESS} color={item.color} />
+        <SurfaceBox
+          x={w / 2}
+          y={DOOR_H / 2}
+          z={0}
+          w={w}
+          h={DOOR_H}
+          d={LEAF_THICKNESS}
+          color={item.color}
+          textureId={item.texture}
+          textureWidthFt={w}
+          textureHeightFt={DOOR_H}
+        />
       </group>
     </group>
   );
