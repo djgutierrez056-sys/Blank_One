@@ -85,6 +85,9 @@ export const MODEL_MAP: Record<string, string> = {
   pool: 'misc/pool',
   trampoline: 'misc/trampoline',
   shed: 'misc/shed',
+
+  'ceiling-light': 'furniture/lampSquareCeiling',
+  'table-lamp': 'furniture/lampRoundTable',
 };
 
 export function modelPathFor(catalogId: string): string | undefined {

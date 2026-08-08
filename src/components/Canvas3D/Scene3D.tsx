@@ -15,6 +15,7 @@ import { ItemGizmo, type GizmoMode } from './EditControls';
 import { AddItemPanel } from './AddItemPanel';
 import { BuildControls, HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
 import { getCatalogEntry } from '../../data/catalog';
+import { getLightSource } from './lights';
 
 const WALL_H = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
@@ -247,7 +248,10 @@ export function Scene3D() {
 
   const handleBuildPlace = (catalogId: string, point: [number, number, number]) => {
     const id = addItemFromCatalog(catalogId, point[0] * scale, point[2] * scale);
-    if (id) updateEntity(id, { elevation: Math.max(0, point[1]) * scale }, { commit: true });
+    if (!id) return;
+    const defaultElevationFt = getLightSource(catalogId)?.defaultElevationFt;
+    const elevationFt = defaultElevationFt ?? Math.max(0, point[1]);
+    updateEntity(id, { elevation: elevationFt * scale }, { commit: true });
   };
 
   const handleBuildResize = (itemId: string, deltaFraction: number) => {
@@ -333,10 +337,22 @@ export function Scene3D() {
           <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} />
         ))}
         {regularItems.map((item) => {
+          const light = getLightSource(item.catalogId);
           const inner = (
-            <group scale={[1, item.heightScale ?? 1, 1]}>
-              <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
-            </group>
+            <>
+              <group scale={[1, item.heightScale ?? 1, 1]}>
+                <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
+              </group>
+              {light && (
+                <pointLight
+                  position={[item.width / scale / 2, light.heightOffsetFt, item.height / scale / 2]}
+                  color={light.color}
+                  intensity={light.intensity}
+                  distance={light.distance}
+                  decay={2}
+                />
+              )}
+            </>
           );
           if (item.id === selectedItem?.id) {
             return (
@@ -451,6 +467,8 @@ export function Scene3D() {
               onPick={(catalogId) => {
                 const id = addItemFromCatalog(catalogId, centerX * scale, centerZ * scale);
                 if (id) {
+                  const defaultElevationFt = getLightSource(catalogId)?.defaultElevationFt;
+                  if (defaultElevationFt) updateEntity(id, { elevation: defaultElevationFt * scale }, { commit: true });
                   select([id]);
                   setGizmoMode('move');
                 }

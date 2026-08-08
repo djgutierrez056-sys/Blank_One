@@ -16,6 +16,7 @@ export const CATEGORIES = [
   'Office',
   'Outdoor',
   'Vehicles',
+  'Lighting',
   'Doors & Windows',
 ] as const;
 
@@ -110,6 +111,10 @@ export const CATALOG: CatalogEntry[] = [
   { id: 'dirt-bike', name: 'Dirt Bike', category: 'Vehicles', width: 6.5, height: 2, color: '#c9622a' },
   { id: 'scooter', name: 'Scooter', category: 'Vehicles', width: 5, height: 1.8, color: '#e0b23a' },
   { id: 'bicycle', name: 'Bicycle', category: 'Vehicles', width: 5.5, height: 1.8, color: '#4a90a4' },
+
+  // Lighting
+  { id: 'ceiling-light', name: 'Ceiling Light', category: 'Lighting', width: 1.6, height: 1.6, color: '#f5eccb' },
+  { id: 'table-lamp', name: 'Table Lamp', category: 'Lighting', width: 1, height: 1, color: '#f5eccb' },
 
   // Doors & Windows
   { id: 'door', name: 'Door', category: 'Doors & Windows', width: 3, height: 0.5, color: '#8a6a45' },
