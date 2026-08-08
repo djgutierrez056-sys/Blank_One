@@ -1,7 +1,23 @@
-import { Suspense, useMemo } from 'react';
+import { Component, Suspense, useMemo, type ReactNode } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { modelPathFor } from './modelMap';
+
+/** A failed/missing .glb (e.g. a 404) throws inside the R3F render tree.
+ * Without this, an uncaught error there unmounts the entire app instead of
+ * just this one item. */
+class ModelErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error('Failed to load furniture model:', error);
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 /** Loads a Kenney furniture .glb and fits it into the item's plan footprint
  * (w × d feet, local space x:0..w, z:0..d, y up from the floor). Scaled
@@ -39,8 +55,10 @@ export function GLTFFurniture({ catalogId, w, d }: { catalogId: string; w: numbe
   const path = modelPathFor(catalogId);
   if (!path) return null;
   return (
-    <Suspense fallback={null}>
-      <LoadedModel path={path} w={w} d={d} />
-    </Suspense>
+    <ModelErrorBoundary>
+      <Suspense fallback={null}>
+        <LoadedModel path={path} w={w} d={d} />
+      </Suspense>
+    </ModelErrorBoundary>
   );
 }
