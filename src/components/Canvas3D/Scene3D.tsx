@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
-import type { Page, Wall as WallEntity } from '../../state/types';
+import type { FurnitureItem, Page, Wall as WallEntity } from '../../state/types';
 import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D } from './Furniture3D';
 import { Door3D } from './Door3D';
@@ -11,6 +11,8 @@ import { SurfaceBox } from './textures';
 import { WalkControls, WalkHint, type DoorTarget } from './WalkControls';
 import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } from './wallLayout';
 import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
+import { ItemGizmo, type GizmoMode } from './EditControls';
+import { AddItemPanel } from './AddItemPanel';
 
 const WALL_H = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
@@ -151,12 +153,29 @@ export function Scene3D() {
   const walkMode = usePlannerStore((s) => s.walkMode);
   const openDoors = usePlannerStore((s) => s.openDoors);
   const toggleDoor = usePlannerStore((s) => s.toggleDoor);
+  const selectedIds = usePlannerStore((s) => s.selectedIds);
+  const select = usePlannerStore((s) => s.select);
+  const updateEntity = usePlannerStore((s) => s.updateEntity);
+  const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
   const [locked, setLocked] = useState(false);
   const [nearDoor, setNearDoor] = useState<string | null>(null);
+  const [gizmoMode, setGizmoMode] = useState<GizmoMode>('move');
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const orbitControlsRef = useRef<any>(null);
+  // A gizmo drag's mouseup often lands over open floor, which would
+  // otherwise fire the floor's deselect-on-click right after finishing a
+  // drag. Set for one click right as a drag ends, then consumed/cleared.
+  const suppressNextDeselectRef = useRef(false);
+
+  // Editing (selecting/dragging/placing) needs a free mouse cursor — while
+  // walking with the pointer locked, only the walkthrough itself owns clicks.
+  const editingEnabled = !walkMode || !locked;
 
   const doorWindowItems = page.items.filter((i) => DOOR_KINDS.has(i.catalogId) || WINDOW_KINDS.has(i.catalogId));
   const doorItems = doorWindowItems.filter(isDoorItem);
   const regularItems = page.items.filter((i) => !DOOR_KINDS.has(i.catalogId) && !WINDOW_KINDS.has(i.catalogId));
+  const selectedItem: FurnitureItem | undefined =
+    editingEnabled && selectedIds.length === 1 ? regularItems.find((i) => i.id === selectedIds[0]) : undefined;
 
   const bounds = computeBounds(page, scale);
   const centerX = (bounds.minX + bounds.maxX) / 2;
@@ -232,7 +251,20 @@ export function Scene3D() {
           shadow-bias={-0.0005}
           shadow-normalBias={0.08}
         />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[centerX, -0.02, centerZ]} receiveShadow>
+        <mesh
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[centerX, -0.02, centerZ]}
+          receiveShadow
+          onClick={(e) => {
+            if (!editingEnabled) return;
+            e.stopPropagation();
+            if (suppressNextDeselectRef.current) {
+              suppressNextDeselectRef.current = false;
+              return;
+            }
+            select([]);
+          }}
+        >
           <planeGeometry args={[spanFt * 4, spanFt * 4]} />
           <meshStandardMaterial color="#eef1f4" />
         </mesh>
@@ -252,13 +284,46 @@ export function Scene3D() {
         {doorItems.map((item) => (
           <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} />
         ))}
-        {regularItems.map((item) => (
-          <group key={item.id} position={[item.x / scale, (item.elevation ?? 0) / scale, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
+        {regularItems.map((item) => {
+          const inner = (
             <group scale={[1, item.heightScale ?? 1, 1]}>
               <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
             </group>
-          </group>
-        ))}
+          );
+          if (item.id === selectedItem?.id) {
+            return (
+              <ItemGizmo
+                key={item.id}
+                item={item}
+                scale={scale}
+                mode={gizmoMode}
+                position={[item.x / scale, (item.elevation ?? 0) / scale, item.y / scale]}
+                rotationY={toRad(item.rotation)}
+                orbitControlsRef={orbitControlsRef}
+                onCommit={(changes) => updateEntity(item.id, changes, { commit: true })}
+                onDragEnd={() => {
+                  suppressNextDeselectRef.current = true;
+                }}
+              >
+                {inner}
+              </ItemGizmo>
+            );
+          }
+          return (
+            <group
+              key={item.id}
+              position={[item.x / scale, (item.elevation ?? 0) / scale, item.y / scale]}
+              rotation={[0, toRad(item.rotation), 0]}
+              onClick={(e) => {
+                if (!editingEnabled) return;
+                e.stopPropagation();
+                select([item.id]);
+              }}
+            >
+              {inner}
+            </group>
+          );
+        })}
         {walkMode ? (
           <WalkControls
             spawn={[centerX, 0, centerZ]}
@@ -270,6 +335,7 @@ export function Scene3D() {
           />
         ) : (
           <OrbitControls
+            ref={orbitControlsRef}
             target={[centerX, 1, centerZ]}
             maxPolarAngle={Math.PI / 2.1}
             minDistance={5}
@@ -278,6 +344,48 @@ export function Scene3D() {
         )}
       </Canvas>
       {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} />}
+      {editingEnabled && (
+        <div className="pointer-events-none absolute inset-0">
+          {addPanelOpen ? (
+            <AddItemPanel
+              onPick={(catalogId) => {
+                const id = addItemFromCatalog(catalogId, centerX * scale, centerZ * scale);
+                if (id) {
+                  select([id]);
+                  setGizmoMode('move');
+                }
+                setAddPanelOpen(false);
+              }}
+              onClose={() => setAddPanelOpen(false)}
+            />
+          ) : (
+            <button
+              onClick={() => setAddPanelOpen(true)}
+              className="pointer-events-auto absolute left-3 top-3 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+            >
+              + Add Item
+            </button>
+          )}
+          {selectedItem && (
+            <div className="pointer-events-auto absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+              {(['move', 'resize', 'rotate'] as GizmoMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setGizmoMode(m)}
+                  className={`rounded px-3 py-1.5 text-xs font-medium capitalize ${
+                    gizmoMode === m ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+              <button onClick={() => select([])} className="rounded px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100">
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ function App() {
         <main className="min-w-0 flex-1">
           {view3D ? <Scene3D /> : <PlanCanvas />}
         </main>
-        {!view3D && <PropertiesPanel />}
+        <PropertiesPanel />
       </div>
     </div>
   );
