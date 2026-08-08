@@ -17,7 +17,7 @@ function fourLegs(w: number, d: number, legR: number, legH: number, color: strin
   return legs;
 }
 
-const SEATING = new Set(['sofa', 'loveseat', 'sectional', 'armchair', 'recliner', 'lounge-chair']);
+export const SEATING = new Set(['sofa', 'loveseat', 'sectional', 'armchair', 'recliner', 'lounge-chair']);
 const RING_CHAIRS = new Set(['office-chair', 'dining-chair', 'bar-stool']);
 const TABLES = new Set([
   'coffee-table',

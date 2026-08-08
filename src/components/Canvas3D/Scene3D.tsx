@@ -4,11 +4,11 @@ import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
 import type { FurnitureItem, Page, Wall as WallEntity } from '../../state/types';
 import { rectCenter } from '../../utils/wallSnap';
-import { Furniture3D } from './Furniture3D';
+import { Furniture3D, SEATING } from './Furniture3D';
 import { Door3D } from './Door3D';
 import { Box, toRad } from './primitives';
 import { SurfaceBox } from './textures';
-import { WalkControls, WalkHint, type DoorTarget } from './WalkControls';
+import { WalkControls, WalkHint, type DoorTarget, type SeatTarget } from './WalkControls';
 import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } from './wallLayout';
 import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
 import { ItemGizmo, type GizmoMode } from './EditControls';
@@ -159,6 +159,8 @@ export function Scene3D() {
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
   const [locked, setLocked] = useState(false);
   const [nearDoor, setNearDoor] = useState<string | null>(null);
+  const [nearSeat, setNearSeat] = useState<string | null>(null);
+  const [sitting, setSitting] = useState<string | null>(null);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('move');
   const [addPanelOpen, setAddPanelOpen] = useState(false);
   const orbitControlsRef = useRef<any>(null);
@@ -225,6 +227,17 @@ export function Scene3D() {
         return { id: item.id, x: center.x / scale, z: center.y / scale };
       }),
     [doorItems, scale],
+  );
+
+  const seatTargets = useMemo<SeatTarget[]>(
+    () =>
+      regularItems
+        .filter((item) => SEATING.has(item.catalogId))
+        .map((item) => {
+          const center = rectCenter(item.x, item.y, item.width, item.height, item.rotation);
+          return { id: item.id, x: center.x / scale, z: center.y / scale };
+        }),
+    [regularItems, scale],
   );
 
   return (
@@ -332,6 +345,9 @@ export function Scene3D() {
             doors={doorTargets}
             onToggleDoor={toggleDoor}
             onNearDoorChange={setNearDoor}
+            seats={seatTargets}
+            onNearSeatChange={setNearSeat}
+            onSitChange={setSitting}
           />
         ) : (
           <OrbitControls
@@ -343,7 +359,7 @@ export function Scene3D() {
           />
         )}
       </Canvas>
-      {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} />}
+      {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
       {editingEnabled && (
         <div className="pointer-events-none absolute inset-0">
           {addPanelOpen ? (
