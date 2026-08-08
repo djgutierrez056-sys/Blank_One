@@ -11,6 +11,11 @@ export function useKeyboardShortcuts() {
     function onKeyDown(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       const store = usePlannerStore.getState();
+      // These are all 2D-plan-editing shortcuts (undo, nudge, rotate-by-15,
+      // delete...) that would otherwise fire on top of — and conflict with
+      // — the 3D walkthrough/build controls (WASD movement, R to rotate a
+      // crosshair-targeted item, Delete to remove it, etc).
+      if (store.walkMode) return;
       const mod = e.ctrlKey || e.metaKey;
 
       if (mod && e.key.toLowerCase() === 'z') {

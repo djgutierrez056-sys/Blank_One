@@ -177,7 +177,7 @@ export function WalkHint({ active, nearDoor, nearSeat, sitting }: { active: bool
             Click to look around
             <br />
             <span className="text-xs text-white/70">
-              WASD / arrows to move &middot; Shift to run &middot; E to open doors &middot; F to sit &middot; Esc to release mouse
+              WASD / arrows to move &middot; Shift to run &middot; E to open doors &middot; F to sit &middot; 1-9 + G to build &middot; Esc to release mouse
             </span>
           </div>
         </div>

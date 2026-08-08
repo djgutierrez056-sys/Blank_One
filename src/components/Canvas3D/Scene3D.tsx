@@ -13,6 +13,8 @@ import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } f
 import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
 import { ItemGizmo, type GizmoMode } from './EditControls';
 import { AddItemPanel } from './AddItemPanel';
+import { BuildControls, HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
+import { getCatalogEntry } from '../../data/catalog';
 
 const WALL_H = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
@@ -157,12 +159,15 @@ export function Scene3D() {
   const select = usePlannerStore((s) => s.select);
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
+  const deleteSelected = usePlannerStore((s) => s.deleteSelected);
   const [locked, setLocked] = useState(false);
   const [nearDoor, setNearDoor] = useState<string | null>(null);
   const [nearSeat, setNearSeat] = useState<string | null>(null);
   const [sitting, setSitting] = useState<string | null>(null);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('move');
   const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [hotbarIndex, setHotbarIndex] = useState(0);
+  const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null);
   const orbitControlsRef = useRef<any>(null);
   // A gizmo drag's mouseup often lands over open floor, which would
   // otherwise fire the floor's deselect-on-click right after finishing a
@@ -239,6 +244,36 @@ export function Scene3D() {
         }),
     [regularItems, scale],
   );
+
+  const handleBuildPlace = (catalogId: string, point: [number, number, number]) => {
+    const id = addItemFromCatalog(catalogId, point[0] * scale, point[2] * scale);
+    if (id) updateEntity(id, { elevation: Math.max(0, point[1]) * scale }, { commit: true });
+  };
+
+  const handleBuildResize = (itemId: string, deltaFraction: number) => {
+    const item = page.items.find((i) => i.id === itemId);
+    if (!item) return;
+    const factor = 1 + deltaFraction;
+    updateEntity(
+      itemId,
+      {
+        width: Math.min(MAX_SIZE_FT * scale, Math.max(MIN_SIZE_FT * scale, item.width * factor)),
+        height: Math.min(MAX_SIZE_FT * scale, Math.max(MIN_SIZE_FT * scale, item.height * factor)),
+      },
+      { commit: true },
+    );
+  };
+
+  const handleBuildRotate = (itemId: string) => {
+    const item = page.items.find((i) => i.id === itemId);
+    if (!item) return;
+    updateEntity(itemId, { rotation: (item.rotation + 45) % 360 }, { commit: true });
+  };
+
+  const handleBuildDelete = (itemId: string) => {
+    select([itemId]);
+    deleteSelected();
+  };
 
   return (
     <div className="relative h-full w-full bg-slate-200">
@@ -327,6 +362,7 @@ export function Scene3D() {
               key={item.id}
               position={[item.x / scale, (item.elevation ?? 0) / scale, item.y / scale]}
               rotation={[0, toRad(item.rotation), 0]}
+              userData={{ itemId: item.id, itemName: item.label || getCatalogEntry(item.catalogId)?.name || item.catalogId }}
               onClick={(e) => {
                 if (!editingEnabled) return;
                 e.stopPropagation();
@@ -337,6 +373,18 @@ export function Scene3D() {
             </group>
           );
         })}
+        {walkMode && (
+          <BuildControls
+            active={locked && !sitting}
+            hotbarIndex={hotbarIndex}
+            onHotbarIndexChange={setHotbarIndex}
+            onTargetChange={setCrosshairTarget}
+            onPlace={handleBuildPlace}
+            onResizeItem={handleBuildResize}
+            onRotateItem={handleBuildRotate}
+            onDeleteItem={handleBuildDelete}
+          />
+        )}
         {walkMode ? (
           <WalkControls
             spawn={[centerX, 0, centerZ]}
@@ -360,6 +408,42 @@ export function Scene3D() {
         )}
       </Canvas>
       {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
+      {walkMode && locked && !sitting && (
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30" />
+          <div className="absolute inset-x-0 top-20 flex justify-center">
+            <div className="rounded-md bg-black/60 px-3 py-1.5 text-center text-sm text-white">
+              {crosshairTarget?.itemId ? (
+                <>
+                  <span className="font-medium">{crosshairTarget.itemName}</span>
+                  <br />
+                  <span className="text-xs text-white/70">
+                    Scroll to resize &middot; R to rotate &middot; Del to remove
+                    {crosshairTarget.canPlace ? ` · G to place ${hotbarLabel(HOTBAR[hotbarIndex])} here` : ''}
+                  </span>
+                </>
+              ) : crosshairTarget?.canPlace ? (
+                <span className="text-xs text-white/70">G to place {hotbarLabel(HOTBAR[hotbarIndex])} here</span>
+              ) : (
+                <span className="text-xs text-white/70">Look at a floor or surface to build</span>
+              )}
+            </div>
+          </div>
+          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1">
+            {HOTBAR.map((catalogId, i) => (
+              <div
+                key={catalogId}
+                title={hotbarLabel(catalogId)}
+                className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-[9px] text-white ${
+                  i === hotbarIndex ? 'border-blue-400 bg-blue-600/80 ring-1 ring-blue-300' : 'border-white/30 bg-black/50'
+                }`}
+              >
+                <span>{i + 1}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {editingEnabled && (
         <div className="pointer-events-none absolute inset-0">
           {addPanelOpen ? (
