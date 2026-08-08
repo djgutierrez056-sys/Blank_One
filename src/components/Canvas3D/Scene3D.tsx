@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
@@ -13,7 +13,8 @@ import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } f
 import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
 import { ItemGizmo, type GizmoMode } from './EditControls';
 import { AddItemPanel } from './AddItemPanel';
-import { BuildControls, HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
+import { InventoryPanel } from './InventoryPanel';
+import { BuildControls, DEFAULT_HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
 import { getCatalogEntry } from '../../data/catalog';
 import { getLightSource } from './lights';
 
@@ -167,8 +168,15 @@ export function Scene3D() {
   const [sitting, setSitting] = useState<string | null>(null);
   const [gizmoMode, setGizmoMode] = useState<GizmoMode>('move');
   const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [hotbar, setHotbar] = useState<string[]>(DEFAULT_HOTBAR);
   const [hotbarIndex, setHotbarIndex] = useState(0);
+  const [inventoryOpen, setInventoryOpen] = useState(false);
   const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null);
+  const lastPlacePointRef = useRef<[number, number, number] | null>(null);
+  const handleTargetChange = (target: CrosshairTarget | null) => {
+    setCrosshairTarget(target);
+    if (target?.canPlace) lastPlacePointRef.current = target.point;
+  };
   const orbitControlsRef = useRef<any>(null);
   // A gizmo drag's mouseup often lands over open floor, which would
   // otherwise fire the floor's deselect-on-click right after finishing a
@@ -246,12 +254,12 @@ export function Scene3D() {
     [regularItems, scale],
   );
 
-  const handleBuildPlace = (catalogId: string, point: [number, number, number]) => {
+  const handleBuildPlace = (catalogId: string, point: [number, number, number], yawDeg: number) => {
     const id = addItemFromCatalog(catalogId, point[0] * scale, point[2] * scale);
     if (!id) return;
     const defaultElevationFt = getLightSource(catalogId)?.defaultElevationFt;
     const elevationFt = defaultElevationFt ?? Math.max(0, point[1]);
-    updateEntity(id, { elevation: elevationFt * scale }, { commit: true });
+    updateEntity(id, { elevation: elevationFt * scale, rotation: yawDeg }, { commit: true });
   };
 
   const handleBuildResize = (itemId: string, deltaFraction: number) => {
@@ -278,6 +286,24 @@ export function Scene3D() {
     select([itemId]);
     deleteSelected();
   };
+
+  const handleInventoryPick = (catalogId: string) => {
+    const point = lastPlacePointRef.current ?? [centerX, 0, centerZ];
+    handleBuildPlace(catalogId, point, 0);
+    setInventoryOpen(false);
+  };
+
+  useEffect(() => {
+    if (!walkMode) return;
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'KeyI' && !sitting) {
+        document.exitPointerLock();
+        setInventoryOpen((open) => !open);
+      }
+    };
+    window.addEventListener('keydown', down);
+    return () => window.removeEventListener('keydown', down);
+  }, [walkMode, sitting]);
 
   return (
     <div className="relative h-full w-full bg-slate-200">
@@ -391,10 +417,11 @@ export function Scene3D() {
         })}
         {walkMode && (
           <BuildControls
-            active={locked && !sitting}
+            active={locked && !sitting && !inventoryOpen}
+            hotbar={hotbar}
             hotbarIndex={hotbarIndex}
             onHotbarIndexChange={setHotbarIndex}
-            onTargetChange={setCrosshairTarget}
+            onTargetChange={handleTargetChange}
             onPlace={handleBuildPlace}
             onResizeItem={handleBuildResize}
             onRotateItem={handleBuildRotate}
@@ -423,8 +450,8 @@ export function Scene3D() {
           />
         )}
       </Canvas>
-      {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
-      {walkMode && locked && !sitting && (
+      {walkMode && !inventoryOpen && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
+      {walkMode && locked && !sitting && !inventoryOpen && (
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30" />
           <div className="absolute inset-x-0 top-20 flex justify-center">
@@ -435,32 +462,46 @@ export function Scene3D() {
                   <br />
                   <span className="text-xs text-white/70">
                     Scroll to resize &middot; R to rotate &middot; Del to remove
-                    {crosshairTarget.canPlace ? ` · G to place ${hotbarLabel(HOTBAR[hotbarIndex])} here` : ''}
+                    {crosshairTarget.canPlace ? ` · G to place ${hotbarLabel(hotbar[hotbarIndex])} here` : ''}
                   </span>
                 </>
               ) : crosshairTarget?.canPlace ? (
-                <span className="text-xs text-white/70">G to place {hotbarLabel(HOTBAR[hotbarIndex])} here</span>
+                <span className="text-xs text-white/70">G to place {hotbarLabel(hotbar[hotbarIndex])} here</span>
               ) : (
                 <span className="text-xs text-white/70">Look at a floor or surface to build</span>
               )}
             </div>
           </div>
-          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1">
-            {HOTBAR.map((catalogId, i) => (
-              <div
-                key={catalogId}
-                title={hotbarLabel(catalogId)}
-                className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-[9px] text-white ${
-                  i === hotbarIndex ? 'border-blue-400 bg-blue-600/80 ring-1 ring-blue-300' : 'border-white/30 bg-black/50'
-                }`}
-              >
-                <span>{i + 1}</span>
-              </div>
-            ))}
+          <div className="absolute inset-x-0 bottom-3 flex flex-col items-center gap-1">
+            <div className="flex justify-center gap-1">
+              {hotbar.map((catalogId, i) => (
+                <div
+                  key={i}
+                  title={hotbarLabel(catalogId)}
+                  className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-[9px] text-white ${
+                    i === hotbarIndex ? 'border-blue-400 bg-blue-600/80 ring-1 ring-blue-300' : 'border-white/30 bg-black/50'
+                  }`}
+                >
+                  <span className="text-[10px] font-semibold">{i + 1}</span>
+                  <span className="line-clamp-1 max-w-[36px] text-center leading-tight">{hotbarLabel(catalogId)}</span>
+                </div>
+              ))}
+            </div>
+            <span className="pointer-events-auto rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press I for full inventory</span>
           </div>
         </div>
       )}
-      {editingEnabled && (
+      {walkMode && inventoryOpen && (
+        <div className="pointer-events-none absolute inset-0">
+          <InventoryPanel
+            hotbar={hotbar}
+            onPick={handleInventoryPick}
+            onAssignSlot={(slot, catalogId) => setHotbar((h) => h.map((c, i) => (i === slot ? catalogId : c)))}
+            onClose={() => setInventoryOpen(false)}
+          />
+        </div>
+      )}
+      {editingEnabled && !inventoryOpen && (
         <div className="pointer-events-none absolute inset-0">
           {addPanelOpen ? (
             <AddItemPanel
