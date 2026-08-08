@@ -43,7 +43,9 @@ export function InventoryPanel({
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
         <div>
           <h2 className="text-base font-semibold text-slate-800">Inventory</h2>
-          <p className="text-xs text-slate-400">Click an item to place it &middot; hover + press 1-9 to assign a hotbar slot &middot; Esc to close</p>
+          <p className="text-xs text-slate-400">
+            Click an item to place it &middot; hover + press 1-9 to assign a hotbar slot &middot; click a hotbar slot to clear it &middot; Esc to close
+          </p>
         </div>
         <button onClick={onClose} className="rounded px-2 py-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
           ✕
@@ -55,14 +57,18 @@ export function InventoryPanel({
         {hotbar.map((catalogId, i) => {
           const entry = CATALOG.find((c) => c.id === catalogId);
           return (
-            <div
+            <button
               key={i}
-              title={entry?.name}
+              title={entry ? `${entry.name} — click to clear` : 'Empty slot'}
+              onClick={() => onAssignSlot(i, '')}
+              disabled={!entry}
               style={entry ? { backgroundColor: entry.color } : undefined}
-              className="flex h-8 w-8 flex-col items-center justify-center rounded border border-slate-300 bg-slate-50 text-[9px] text-slate-700"
+              className={`flex h-8 w-8 flex-col items-center justify-center rounded border text-[9px] text-slate-700 ${
+                entry ? 'border-slate-300 hover:opacity-75' : 'border-dashed border-slate-300 bg-slate-50'
+              }`}
             >
               <span className="font-semibold drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]">{i + 1}</span>
-            </div>
+            </button>
           );
         })}
       </div>

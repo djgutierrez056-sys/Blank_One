@@ -171,6 +171,7 @@ export function Scene3D() {
   const [hotbar, setHotbar] = useState<string[]>(DEFAULT_HOTBAR);
   const [hotbarIndex, setHotbarIndex] = useState(0);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [buildModeOn, setBuildModeOn] = useState(false);
   const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null);
   const lastPlacePointRef = useRef<[number, number, number] | null>(null);
   const handleTargetChange = (target: CrosshairTarget | null) => {
@@ -293,17 +294,44 @@ export function Scene3D() {
     setInventoryOpen(false);
   };
 
+  const getItemRect = (id: string) => {
+    const item = page.items.find((i) => i.id === id);
+    if (!item) return undefined;
+    return {
+      x: item.x / scale,
+      y: item.y / scale,
+      width: item.width / scale,
+      height: item.height / scale,
+      rotation: item.rotation,
+      elevation: (item.elevation ?? 0) / scale,
+    };
+  };
+
+  const handleMoveItem = (itemId: string, xFt: number, yFt: number, elevationFt: number) => {
+    updateEntity(itemId, { x: xFt * scale, y: yFt * scale, elevation: elevationFt * scale }, { commit: true });
+  };
+
+  const handleCornerResize = (itemId: string, changes: { x: number; y: number; width: number; height: number }) => {
+    updateEntity(
+      itemId,
+      { x: changes.x * scale, y: changes.y * scale, width: changes.width * scale, height: changes.height * scale },
+      { commit: true },
+    );
+  };
+
   useEffect(() => {
     if (!walkMode) return;
     const down = (e: KeyboardEvent) => {
       if (e.code === 'KeyI' && !sitting) {
         document.exitPointerLock();
         setInventoryOpen((open) => !open);
+      } else if (e.code === 'KeyB' && !sitting && !inventoryOpen) {
+        setBuildModeOn((on) => !on);
       }
     };
     window.addEventListener('keydown', down);
     return () => window.removeEventListener('keydown', down);
-  }, [walkMode, sitting]);
+  }, [walkMode, sitting, inventoryOpen]);
 
   return (
     <div className="relative h-full w-full bg-slate-200">
@@ -417,15 +445,19 @@ export function Scene3D() {
         })}
         {walkMode && (
           <BuildControls
-            active={locked && !sitting && !inventoryOpen}
+            active={locked && buildModeOn && !sitting && !inventoryOpen}
             hotbar={hotbar}
             hotbarIndex={hotbarIndex}
+            gridSnapFt={project.gridSnap}
+            getItemRect={getItemRect}
             onHotbarIndexChange={setHotbarIndex}
             onTargetChange={handleTargetChange}
             onPlace={handleBuildPlace}
             onResizeItem={handleBuildResize}
             onRotateItem={handleBuildRotate}
             onDeleteItem={handleBuildDelete}
+            onMoveItem={handleMoveItem}
+            onCornerResize={handleCornerResize}
           />
         )}
         {walkMode ? (
@@ -451,7 +483,12 @@ export function Scene3D() {
         )}
       </Canvas>
       {walkMode && !inventoryOpen && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
-      {walkMode && locked && !sitting && !inventoryOpen && (
+      {walkMode && locked && !sitting && !inventoryOpen && !buildModeOn && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <span className="rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press B to build</span>
+        </div>
+      )}
+      {walkMode && locked && buildModeOn && !sitting && !inventoryOpen && (
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30" />
           <div className="absolute inset-x-0 top-20 flex justify-center">
@@ -461,12 +498,15 @@ export function Scene3D() {
                   <span className="font-medium">{crosshairTarget.itemName}</span>
                   <br />
                   <span className="text-xs text-white/70">
-                    Scroll to resize &middot; R to rotate &middot; Del to remove
-                    {crosshairTarget.canPlace ? ` · G to place ${hotbarLabel(hotbar[hotbarIndex])} here` : ''}
+                    Click-drag to move &middot; right-click a corner to resize &middot; scroll to resize both &middot; R to
+                    rotate &middot; Del to remove
+                    {crosshairTarget.canPlace && hotbar[hotbarIndex] ? ` · G to place ${hotbarLabel(hotbar[hotbarIndex])} here` : ''}
                   </span>
                 </>
-              ) : crosshairTarget?.canPlace ? (
+              ) : crosshairTarget?.canPlace && hotbar[hotbarIndex] ? (
                 <span className="text-xs text-white/70">G to place {hotbarLabel(hotbar[hotbarIndex])} here</span>
+              ) : crosshairTarget?.canPlace ? (
+                <span className="text-xs text-white/70">Slot empty &middot; press I to assign an item</span>
               ) : (
                 <span className="text-xs text-white/70">Look at a floor or surface to build</span>
               )}
@@ -480,14 +520,16 @@ export function Scene3D() {
                   title={hotbarLabel(catalogId)}
                   className={`flex h-10 w-10 flex-col items-center justify-center rounded-md border text-[9px] text-white ${
                     i === hotbarIndex ? 'border-blue-400 bg-blue-600/80 ring-1 ring-blue-300' : 'border-white/30 bg-black/50'
-                  }`}
+                  } ${!catalogId ? 'opacity-40' : ''}`}
                 >
                   <span className="text-[10px] font-semibold">{i + 1}</span>
                   <span className="line-clamp-1 max-w-[36px] text-center leading-tight">{hotbarLabel(catalogId)}</span>
                 </div>
               ))}
             </div>
-            <span className="pointer-events-auto rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press I for full inventory</span>
+            <span className="pointer-events-auto rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">
+              Press I for full inventory &middot; B to stop building
+            </span>
           </div>
         </div>
       )}
