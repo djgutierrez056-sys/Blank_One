@@ -58,7 +58,49 @@ export function GLTFFurniture({ catalogId, w, d }: { catalogId: string; w: numbe
     <ModelErrorBoundary>
       <Suspense fallback={null}>
         <LoadedModel path={path} w={w} d={d} />
+        {catalogId === 'tv-stand' && <TvScreen standW={w} standD={d} />}
       </Suspense>
     </ModelErrorBoundary>
   );
+}
+
+/** A TV sitting on top of the tv-stand cabinet — the cabinet model has no
+ * screen of its own, so this fits a second model on top of it instead of
+ * stretching one model to cover both. Scaled by width only (not the full
+ * footprint) so the screen keeps its own proportions rather than being
+ * squashed to the stand's depth. */
+function TvScreen({ standW, standD }: { standW: number; standD: number }) {
+  const { scene: standScene } = useGLTF(modelPathFor('tv-stand')!);
+  const { scene: tvScene } = useGLTF(`${import.meta.env.BASE_URL}models/furniture/televisionModern.glb`);
+
+  const { object, x, y, z, scale } = useMemo(() => {
+    const standBox = new THREE.Box3().setFromObject(standScene);
+    const standSize = new THREE.Vector3();
+    standBox.getSize(standSize);
+    const standScale = Math.min(standSize.x > 0 ? standW / standSize.x : 1, standSize.z > 0 ? standD / standSize.z : 1);
+    const standHeight = standSize.y * standScale;
+
+    const clone = tvScene.clone(true);
+    const tvBox = new THREE.Box3().setFromObject(clone);
+    const tvSize = new THREE.Vector3();
+    tvBox.getSize(tvSize);
+    const tvScale = (standW * 0.6) / tvSize.x;
+    const center = new THREE.Vector3();
+    tvBox.getCenter(center);
+    clone.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    return {
+      object: clone,
+      scale: tvScale,
+      x: standW / 2 - center.x * tvScale,
+      y: standHeight - tvBox.min.y * tvScale,
+      z: standD / 2 - center.z * tvScale,
+    };
+  }, [standScene, tvScene, standW, standD]);
+
+  return <primitive object={object} position={[x, y, z]} scale={scale} />;
 }

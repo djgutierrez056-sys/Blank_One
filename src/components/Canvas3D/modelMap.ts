@@ -70,6 +70,21 @@ export const MODEL_MAP: Record<string, string> = {
   'dirt-bike': 'vehicles/dirt-bike',
   scooter: 'vehicles/scooter',
   bicycle: 'vehicles/bicycle',
+
+  dishwasher: 'misc/dishwasher',
+  'wine-rack': 'misc/wine-rack',
+  printer: 'misc/printer',
+  safe: 'misc/safe',
+  'toilet-paper-holder': 'misc/toilet-paper-holder',
+  'laundry-basket': 'misc/laundry-basket',
+  whiteboard: 'misc/whiteboard',
+  umbrella: 'misc/umbrella',
+  hammock: 'misc/hammock',
+  grill: 'misc/grill',
+  fence: 'misc/fence',
+  pool: 'misc/pool',
+  trampoline: 'misc/trampoline',
+  shed: 'misc/shed',
 };
 
 export function modelPathFor(catalogId: string): string | undefined {

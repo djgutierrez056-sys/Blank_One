@@ -3,7 +3,7 @@ import type { FurnitureItem } from '../../state/types';
 import { darken } from '../Canvas/FurnitureIcon';
 import { GLTFFurniture } from './GLTFFurniture';
 import { MODEL_MAP } from './modelMap';
-import { Box, Cone, Cyl, Sphere, Torus } from './primitives';
+import { Box, Cone, Cyl, Sphere } from './primitives';
 
 function fourLegs(w: number, d: number, legR: number, legH: number, color: string, inset = 0.15) {
   const xs = [inset, w - inset];
@@ -33,12 +33,12 @@ const TABLES = new Set([
 ]);
 const BEDS = new Set(['bed-king', 'bed-queen', 'bed-twin', 'crib']);
 const TALL_CABINETS = new Set(['wardrobe', 'pantry', 'bookshelf', 'linen-cabinet', 'laundry-cabinet']);
-const LOW_CABINETS = new Set(['nightstand', 'dresser', 'filing-cabinet', 'vanity', 'wine-rack', 'safe']);
+const LOW_CABINETS = new Set(['nightstand', 'dresser', 'filing-cabinet', 'vanity']);
 const TALL_APPLIANCE = new Set(['fridge']);
-const MED_APPLIANCE = new Set(['dishwasher', 'stove', 'washer', 'dryer']);
-const SHORT_APPLIANCE = new Set(['microwave', 'printer']);
+const MED_APPLIANCE = new Set(['stove', 'washer', 'dryer']);
+const SHORT_APPLIANCE = new Set(['microwave']);
 const SINKS = new Set(['sink-kitchen', 'sink-bath', 'utility-sink']);
-const FLAT_PANELS = new Set(['mirror', 'mirror-bath', 'floor-mirror', 'whiteboard']);
+const FLAT_PANELS = new Set(['mirror', 'mirror-bath', 'floor-mirror']);
 
 /** Renders one catalog item as a small group of primitives in local plan space
  * — x runs 0..w (feet), z runs 0..d (feet), y is up from the floor. Doors and
@@ -205,105 +205,12 @@ export function Furniture3D({ item, w, d }: { item: FurnitureItem; w: number; d:
     );
   }
 
-  if (id === 'grill') {
-    return (
-      <group>
-        <Box x={cx} y={1.9} z={cz} w={w} h={0.9} d={d} color={color} />
-        {fourLegs(w, d, 0.05, 1.4, '#3a3a3a', 0.2)}
-      </group>
-    );
-  }
-
   if (id === 'bench') {
     return (
       <group>
         <Box x={cx} y={1.3} z={cz} w={w} h={0.2} d={d} color={color} />
         <Box x={w * 0.08} y={0.65} z={cz} w={0.15} h={1.3} d={d * 0.8} color={dark} />
         <Box x={w * 0.92} y={0.65} z={cz} w={0.15} h={1.3} d={d * 0.8} color={dark} />
-      </group>
-    );
-  }
-
-  if (id === 'fence') {
-    const postCount = Math.max(2, Math.round(w / 4));
-    const posts = [];
-    for (let i = 0; i < postCount; i++) {
-      posts.push(<Cyl key={i} x={(i / (postCount - 1)) * w} y={1.5} z={cz} rTop={0.08} h={3} color={dark} />);
-    }
-    return (
-      <group>
-        <Box x={cx} y={1.6} z={cz} w={w} h={0.4} d={d} color={color} />
-        {posts}
-      </group>
-    );
-  }
-
-  if (id === 'pool') {
-    return (
-      <group>
-        <Box x={cx} y={-0.1} z={cz} w={w} h={0.3} d={d} color="#e6e0d0" />
-        <Box x={cx} y={0.05} z={cz} w={w * 0.9} h={0.3} d={d * 0.9} color={color} opacity={0.85} />
-      </group>
-    );
-  }
-
-  if (id === 'trampoline') {
-    const r = Math.min(w, d) / 2;
-    return (
-      <group>
-        <Cyl x={cx} y={2.2} z={cz} rTop={r * 0.85} h={0.1} color="#2b2b2b" />
-        <Torus x={cx} y={2.2} z={cz} r={r * 0.9} tube={0.05} color={dark} />
-        {[0, 90, 180, 270].map((a) => (
-          <Cyl
-            key={a}
-            x={cx + r * Math.cos((a * Math.PI) / 180)}
-            y={1.1}
-            z={cz + r * Math.sin((a * Math.PI) / 180)}
-            rTop={0.04}
-            h={2.2}
-            color="#8a8a8a"
-          />
-        ))}
-      </group>
-    );
-  }
-
-  if (id === 'shed') {
-    const wallH = 5;
-    return (
-      <group>
-        <Box x={cx} y={wallH / 2} z={cz} w={w} h={wallH} d={d} color={color} />
-        <Box x={cx} y={wallH + 0.5} z={cz} w={w * 1.05} h={0.15} d={d * 1.05} color={dark} />
-      </group>
-    );
-  }
-
-  if (id === 'hammock') {
-    return (
-      <group>
-        <Cyl x={0.15} y={2.5} z={cz} rTop={0.08} h={5} color="#6b4a2f" />
-        <Cyl x={w - 0.15} y={2.5} z={cz} rTop={0.08} h={5} color="#6b4a2f" />
-        <Box x={cx} y={1.6} z={cz} w={w * 0.85} h={0.15} d={d * 0.7} color={color} opacity={0.9} />
-      </group>
-    );
-  }
-
-  if (id === 'umbrella') {
-    const r = Math.min(w, d) / 2;
-    return (
-      <group>
-        <Cyl x={cx} y={2.5} z={cz} rTop={0.06} h={5} color="#8f8f8f" />
-        <Cone x={cx} y={5.3} z={cz} r={r} h={1.2} color={color} />
-      </group>
-    );
-  }
-
-  if (id === 'laundry-basket') {
-    const r = Math.min(w, d) / 2;
-    return (
-      <group>
-        <Cyl x={cx} y={0.65} z={cz} rTop={r * 0.95} rBottom={r * 0.8} h={1.3} color={color} opacity={0.9} />
-        <Torus x={cx} y={1.3} z={cz} r={r * 0.95} tube={0.04} color={dark} />
       </group>
     );
   }
@@ -322,7 +229,7 @@ export function Furniture3D({ item, w, d }: { item: FurnitureItem; w: number; d:
     const baseY = id === 'floor-mirror' ? 0 : 2.4;
     return (
       <group>
-        <Box x={cx} y={baseY + h / 2} z={cz} w={w} h={h} d={Math.max(0.08, d)} color={id === 'whiteboard' ? '#ffffff' : color} />
+        <Box x={cx} y={baseY + h / 2} z={cz} w={w} h={h} d={Math.max(0.08, d)} color={color} />
       </group>
     );
   }

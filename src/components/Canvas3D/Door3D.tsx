@@ -21,7 +21,7 @@ export function Door3D({ item, scale, open }: { item: FurnitureItem; scale: numb
   return (
     <group position={[item.x / scale, 0, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
       <group position={[hingeX, 0, t / 2]} rotation={[0, rot, 0]}>
-        <Box x={w / 2} y={DOOR_H / 2} z={0} w={w} h={DOOR_H} d={LEAF_THICKNESS} color="#8a6a45" />
+        <Box x={w / 2} y={DOOR_H / 2} z={0} w={w} h={DOOR_H} d={LEAF_THICKNESS} color={item.color} />
       </group>
     </group>
   );
