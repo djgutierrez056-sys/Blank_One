@@ -1,6 +1,7 @@
 import { getActivePage, usePlannerStore } from '../../state/store';
 import type { FurnitureItem, Room, TextLabel, Wall } from '../../state/types';
 import { WALL_TEXTURES } from '../Canvas3D/textures';
+import { DOOR_KINDS, WINDOW_KINDS } from '../Canvas3D/wallLayout';
 
 function TextureSwatches({ value, onPick, disabled }: { value: string | undefined; onPick: (id: string | undefined) => void; disabled?: boolean }) {
   return (
@@ -222,6 +223,23 @@ export function PropertiesPanel() {
           className="h-7 w-14 cursor-pointer rounded border border-slate-300 disabled:cursor-not-allowed"
         />
       </label>
+
+      {item && !DOOR_KINDS.has(item.catalogId) && !WINDOW_KINDS.has(item.catalogId) && (
+        <label className="flex items-start gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={!!item.realWorldSizeLock}
+            onChange={(e) => commit({ realWorldSizeLock: e.target.checked })}
+            disabled={item.locked}
+            className="mt-0.5 disabled:cursor-not-allowed"
+          />
+          <span>
+            Lock to real-world size (3D)
+            <br />
+            <span className="text-[11px] text-slate-400">Ignores width/height above when rendering in 3D — useful if it got resized too large by accident.</span>
+          </span>
+        </label>
+      )}
 
       {room && (
         <>

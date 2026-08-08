@@ -32,6 +32,7 @@ export interface FurnitureItem {
   texture?: string; // for doors, 3D-only finish texture id (see textures.ts)
   elevation?: number; // 3D-only: height of the item's base above the floor, same units as x/y
   heightScale?: number; // 3D-only: vertical scale multiplier for the 3D model, default 1
+  realWorldSizeLock?: boolean; // 3D-only: render at the catalog's real-world size regardless of width/height
   locked?: boolean;
 }
 

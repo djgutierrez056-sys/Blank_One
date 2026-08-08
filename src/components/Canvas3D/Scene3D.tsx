@@ -486,21 +486,38 @@ export function Scene3D() {
         ))}
         {regularItems.map((item) => {
           const light = getLightSource(item.catalogId);
+          const actualWFt = item.width / scale;
+          const actualDFt = item.height / scale;
+          let renderWFt = actualWFt;
+          let renderDFt = actualDFt;
+          let visualOffsetX = 0;
+          let visualOffsetZ = 0;
+          if (item.realWorldSizeLock) {
+            const entry = getCatalogEntry(item.catalogId);
+            if (entry) {
+              renderWFt = entry.width;
+              renderDFt = entry.height;
+              // Center the real-size model within whatever footprint the
+              // item was resized to, rather than pinning it to one corner.
+              visualOffsetX = (actualWFt - renderWFt) / 2;
+              visualOffsetZ = (actualDFt - renderDFt) / 2;
+            }
+          }
           const inner = (
-            <>
+            <group position={[visualOffsetX, 0, visualOffsetZ]}>
               <group scale={[1, item.heightScale ?? 1, 1]}>
-                <Furniture3D item={item} w={item.width / scale} d={item.height / scale} />
+                <Furniture3D item={item} w={renderWFt} d={renderDFt} />
               </group>
               {light && (
                 <pointLight
-                  position={[item.width / scale / 2, light.heightOffsetFt, item.height / scale / 2]}
+                  position={[renderWFt / 2, light.heightOffsetFt, renderDFt / 2]}
                   color={light.color}
                   intensity={light.intensity}
                   distance={light.distance}
                   decay={2}
                 />
               )}
-            </>
+            </group>
           );
           if (item.id === selectedItem?.id) {
             return (
