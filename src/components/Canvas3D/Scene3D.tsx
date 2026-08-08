@@ -21,17 +21,31 @@ import { getLightSource } from './lights';
 import { PlayerAvatar } from './PlayerAvatar';
 import { DayNightSky, computeDayNight, type DayNightState } from './DayNightSky';
 
-const WALL_H = 8;
+const WALL_H_BASE = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
-const DOOR_H = 6.75;
-const WINDOW_SILL = 2.5;
-const WINDOW_HEADER = 6.5;
+const DOOR_H_BASE = 6.75;
+const WINDOW_SILL_BASE = 2.5;
+const WINDOW_HEADER_BASE = 6.5;
 
 // Flat/wall-mounted items a walker should be able to step through.
 const NON_BLOCKING = new Set(['rug', 'mirror', 'mirror-bath', 'floor-mirror', 'whiteboard']);
 
-function WallSegments({ segments, wallColor, wallTexture }: { segments: WallSegment[]; wallColor?: string; wallTexture?: string }) {
+function WallSegments({
+  segments,
+  wallColor,
+  wallTexture,
+  wallScale = 1,
+}: {
+  segments: WallSegment[];
+  wallColor?: string;
+  wallTexture?: string;
+  wallScale?: number;
+}) {
   const color = wallColor ?? DEFAULT_WALL_COLOR;
+  const WALL_H = WALL_H_BASE * wallScale;
+  const DOOR_H = DOOR_H_BASE * wallScale;
+  const WINDOW_SILL = WINDOW_SILL_BASE * wallScale;
+  const WINDOW_HEADER = WINDOW_HEADER_BASE * wallScale;
   return (
     <>
       {segments.map((seg, i) => {
@@ -120,9 +134,10 @@ function WallSegments({ segments, wallColor, wallTexture }: { segments: WallSegm
   );
 }
 
-function Wall3D({ wall, scale }: { wall: WallEntity; scale: number }) {
+function Wall3D({ wall, scale, wallScale = 1 }: { wall: WallEntity; scale: number; wallScale?: number }) {
   const length = wall.width / scale;
   const t = wall.height / scale;
+  const WALL_H = WALL_H_BASE * wallScale;
   return (
     <group position={[wall.x / scale, 0, wall.y / scale]} rotation={[0, toRad(wall.rotation), 0]}>
       <Box x={length / 2} y={WALL_H / 2} z={0} w={length} h={WALL_H} d={t} color={wall.color} castShadow={false} />
@@ -166,6 +181,7 @@ export function Scene3D() {
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
   const deleteSelected = usePlannerStore((s) => s.deleteSelected);
   const remoteAvatars = usePlannerStore((s) => s.remoteAvatars);
+  const wallScale = project.wallScale ?? 1;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const relockPointer = () => {
     wrapperRef.current?.querySelector('canvas')?.requestPointerLock();
@@ -425,7 +441,10 @@ export function Scene3D() {
         key={walkMode ? 'walk' : 'orbit'}
         shadows
         gl={{ logarithmicDepthBuffer: true, preserveDrawingBuffer: true }}
-        camera={{ position: [centerX + spanFt * 0.85, spanFt * 0.95, centerZ + spanFt * 0.85], fov: 40 }}
+        camera={{
+          position: [centerX + spanFt * 0.85, spanFt * 0.95 * Math.max(1, wallScale), centerZ + spanFt * 0.85],
+          fov: 40,
+        }}
       >
         <DayNightSky center={[centerX, centerZ]} paused={dayNightPaused} onChange={setDayNight} />
         <ambientLight intensity={dayNight.ambientIntensity} color={dayNight.ambientColor} />
@@ -473,16 +492,16 @@ export function Scene3D() {
             <group key={room.id} position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
               <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
               <group userData={{ wallRoomId: room.id }}>
-                <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} />
+                <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} wallScale={wallScale} />
               </group>
             </group>
           );
         })}
         {page.walls.map((wall) => (
-          <Wall3D key={wall.id} wall={wall} scale={scale} />
+          <Wall3D key={wall.id} wall={wall} scale={scale} wallScale={wallScale} />
         ))}
         {doorItems.map((item) => (
-          <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} />
+          <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} wallScale={wallScale} />
         ))}
         {regularItems.map((item) => {
           const light = getLightSource(item.catalogId);
@@ -577,6 +596,7 @@ export function Scene3D() {
           <WalkControls
             spawn={[centerX, 0, centerZ]}
             enabled={!buildModeOn}
+            humanScale={wallScale}
             onLockChange={setLocked}
             obstacles={obstacles}
             doors={doorTargets}

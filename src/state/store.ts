@@ -149,6 +149,7 @@ interface PlannerState extends HistoryState {
   setProject: (project: Project) => void;
   newProject: () => void;
   setGridSnap: (feet: number) => void;
+  setWallScale: (multiplier: number) => void;
   setShowLabels: (show: boolean) => void;
   renameProject: (name: string) => void;
 }
@@ -753,6 +754,11 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   setGridSnap: (feet) => {
     set((s) => ({ project: { ...s.project, gridSnap: feet } }));
+    persist(get().project);
+  },
+
+  setWallScale: (multiplier) => {
+    set((s) => ({ project: { ...s.project, wallScale: Math.max(0.25, Math.min(4, multiplier)) } }));
     persist(get().project);
   },
 

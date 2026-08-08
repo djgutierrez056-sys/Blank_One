@@ -82,6 +82,12 @@ export interface Project {
   scale: number; // px per foot
   gridSnap: number; // feet
   showLabels: boolean;
+  /** 3D-only: uniform multiplier for wall height, door/window height, and
+   * the player character, independent of the floor plan's footprint —
+   * a quick fix for a room whose furniture reads as oversized relative to
+   * the walls/doors/character (bump this up to match them, rather than
+   * repositioning every item). Undefined/1 = normal human scale. */
+  wallScale?: number;
 }
 
 export type ToolMode = 'select' | 'draw-room' | 'draw-wall' | 'place-text';

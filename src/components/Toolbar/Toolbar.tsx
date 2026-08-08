@@ -65,6 +65,7 @@ export function Toolbar() {
   const newProject = usePlannerStore((s) => s.newProject);
   const renameProject = usePlannerStore((s) => s.renameProject);
   const setGridSnap = usePlannerStore((s) => s.setGridSnap);
+  const setWallScale = usePlannerStore((s) => s.setWallScale);
   const setShowLabels = usePlannerStore((s) => s.setShowLabels);
   const clipboardLength = usePlannerStore((s) => s.clipboard.length);
 
@@ -187,13 +188,29 @@ export function Toolbar() {
       <div className="flex-1" />
 
       {view3D && (
-        <Button
-          title={walkMode ? 'Exit walkthrough (Esc)' : 'Walk through this plan in first person'}
-          active={walkMode}
-          onClick={() => setWalkMode(!walkMode)}
-        >
-          {walkMode ? 'Exit Walk' : 'Walk'}
-        </Button>
+        <>
+          <label title="Scales wall/door/window height and the player character to match oversized furniture, without moving anything" className="flex items-center gap-1 text-xs text-slate-500">
+            Scale
+            <select
+              value={project.wallScale ?? 1}
+              onChange={(e) => setWallScale(Number(e.target.value))}
+              className="rounded border border-slate-300 px-1 py-1 text-xs"
+            >
+              {[0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4].map((v) => (
+                <option key={v} value={v}>
+                  {v}x
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            title={walkMode ? 'Exit walkthrough (Esc)' : 'Walk through this plan in first person'}
+            active={walkMode}
+            onClick={() => setWalkMode(!walkMode)}
+          >
+            {walkMode ? 'Exit Walk' : 'Walk'}
+          </Button>
+        </>
       )}
       <Button
         title={view3D ? 'Back to the 2D floor plan' : 'View this plan in 3D'}

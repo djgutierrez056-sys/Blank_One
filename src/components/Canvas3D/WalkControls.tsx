@@ -6,9 +6,9 @@ import { resolveCollisions, type Obstacle } from './collision';
 import { broadcastAvatar } from '../../lib/collab';
 import { isTypingTarget } from '../../utils/dom';
 
-const EYE_HEIGHT = 5.5;
-const SIT_EYE_HEIGHT = 3.0;
-const PLAYER_RADIUS = 1.0;
+const EYE_HEIGHT_BASE = 5.5;
+const SIT_EYE_HEIGHT_BASE = 3.0;
+const PLAYER_RADIUS_BASE = 1.0;
 const WALK_SPEED = 9; // ft/sec
 const RUN_SPEED = 18; // ft/sec (Shift)
 const DOOR_RANGE = 4.5; // ft
@@ -37,6 +37,7 @@ export interface SeatTarget {
 export function WalkControls({
   spawn,
   enabled = true,
+  humanScale = 1,
   onLockChange,
   obstacles,
   doors,
@@ -50,6 +51,10 @@ export function WalkControls({
   /** False while Build Mode owns the mouse (free cursor, no pointer lock) —
    * movement/collision still run, only the look-around lock is suspended. */
   enabled?: boolean;
+  /** Scales eye height and collision radius to match a project's wallScale
+   * (bigger walls/doors -> a bigger character to match), independent of
+   * the floor plan's actual footprint. */
+  humanScale?: number;
   onLockChange: (locked: boolean) => void;
   obstacles: Obstacle[];
   doors: DoorTarget[];
@@ -60,6 +65,9 @@ export function WalkControls({
   onSitChange: (id: string | null) => void;
 }) {
   const { camera } = useThree();
+  const EYE_HEIGHT = EYE_HEIGHT_BASE * humanScale;
+  const SIT_EYE_HEIGHT = SIT_EYE_HEIGHT_BASE * humanScale;
+  const PLAYER_RADIUS = PLAYER_RADIUS_BASE * humanScale;
   const keys = useRef<Record<string, boolean>>({});
   const obstaclesRef = useRef(obstacles);
   obstaclesRef.current = obstacles;

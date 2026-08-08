@@ -16,6 +16,7 @@ const PANTS = '#3b4252';
  * update. A simple low-poly figure (legs, torso, arms, head) rather than a
  * single stretched capsule, so it reads as a person and not a cylinder. */
 export function PlayerAvatar({ clientId, color, name }: { clientId: string; color: string; name: string }) {
+  const worldScale = usePlannerStore((s) => s.project.wallScale ?? 1);
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
@@ -69,11 +70,11 @@ export function PlayerAvatar({ clientId, color, name }: { clientId: string; colo
     if (rightArmRef.current) rightArmRef.current.rotation.x = swing;
   });
 
-  const scale = sitting ? 0.62 : 1;
+  const sitScale = sitting ? 0.62 : 1;
 
   return (
     <group ref={groupRef}>
-      <group ref={bodyRef} scale={[1, scale, 1]}>
+      <group ref={bodyRef} scale={[worldScale, sitScale * worldScale, worldScale]}>
         <group ref={leftLegRef} position={[-0.22, 1.3, 0]}>
           <mesh position={[0, -0.65, 0]} castShadow>
             <cylinderGeometry args={[0.16, 0.13, 1.3, 8]} />
@@ -107,7 +108,7 @@ export function PlayerAvatar({ clientId, color, name }: { clientId: string; colo
           <meshStandardMaterial color={SKIN} roughness={0.8} />
         </mesh>
       </group>
-      <Billboard position={[0, (sitting ? 4.15 * scale : 4.15) + 0.6, 0]}>
+      <Billboard position={[0, (sitting ? 4.15 * sitScale : 4.15) * worldScale + 0.6, 0]}>
         <Text fontSize={0.4} color={color} anchorX="center" anchorY="bottom" outlineWidth={0.025} outlineColor="#000000">
           {name}
         </Text>

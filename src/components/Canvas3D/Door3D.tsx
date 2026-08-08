@@ -2,7 +2,7 @@ import type { FurnitureItem } from '../../state/types';
 import { toRad } from './primitives';
 import { SurfaceBox } from './textures';
 
-const DOOR_H = 6.75;
+const DOOR_H_BASE = 6.75;
 const LEAF_THICKNESS = 0.15;
 
 /** The physical door leaf, positioned via the door item's own x/y/rotation
@@ -11,9 +11,20 @@ const LEAF_THICKNESS = 0.15;
  * (flippedX/flipped, set in the 2D properties panel). Rendered separately
  * from the wall opening itself (see wallLayout.ts / Scene3D), which now
  * only draws the transom above the doorway. */
-export function Door3D({ item, scale, open }: { item: FurnitureItem; scale: number; open: boolean }) {
+export function Door3D({
+  item,
+  scale,
+  open,
+  wallScale = 1,
+}: {
+  item: FurnitureItem;
+  scale: number;
+  open: boolean;
+  wallScale?: number;
+}) {
   const w = item.width / scale;
   const t = item.height / scale;
+  const DOOR_H = DOOR_H_BASE * wallScale;
   const hingeX = item.flippedX ? w : 0;
   const closedRot = item.flippedX ? Math.PI : 0;
   const openRot = item.flipped ? Math.PI / 2 : -Math.PI / 2;
