@@ -6,7 +6,7 @@ import type { FurnitureItem, Page, Wall as WallEntity } from '../../state/types'
 import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D, SEATING } from './Furniture3D';
 import { Door3D } from './Door3D';
-import { Box, toRad } from './primitives';
+import { Box, rotate2D, toRad } from './primitives';
 import { SurfaceBox } from './textures';
 import { WalkControls, WalkHint, type DoorTarget, type SeatTarget } from './WalkControls';
 import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } from './wallLayout';
@@ -19,6 +19,7 @@ import { BuildControls, DEFAULT_HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, t
 import { getCatalogEntry } from '../../data/catalog';
 import { getLightSource } from './lights';
 import { PlayerAvatar } from './PlayerAvatar';
+import { DayNightSky, computeDayNight, type DayNightState } from './DayNightSky';
 
 const WALL_H = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
@@ -169,6 +170,14 @@ export function Scene3D() {
   const relockPointer = () => {
     wrapperRef.current?.querySelector('canvas')?.requestPointerLock();
   };
+  const takePhoto = () => {
+    const canvas = wrapperRef.current?.querySelector('canvas');
+    if (!canvas) return;
+    const link = document.createElement('a');
+    link.download = `${project.name || 'room'}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
   const [locked, setLocked] = useState(false);
   const [nearDoor, setNearDoor] = useState<string | null>(null);
   const [nearSeat, setNearSeat] = useState<string | null>(null);
@@ -181,6 +190,8 @@ export function Scene3D() {
   const [buildModeOn, setBuildModeOn] = useState(false);
   const [paintOpen, setPaintOpen] = useState(false);
   const [heldPaint, setHeldPaint] = useState<Paint | null>(null);
+  const [dayNight, setDayNight] = useState<DayNightState>(() => computeDayNight(9));
+  const [dayNightPaused, setDayNightPaused] = useState(false);
   const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null);
   const lastPlacePointRef = useRef<[number, number, number] | null>(null);
   const handleTargetChange = (target: CrosshairTarget | null) => {
@@ -212,10 +223,51 @@ export function Scene3D() {
   const centerZ = (bounds.minY + bounds.maxY) / 2;
   const spanFt = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 12);
 
-  const roomSegments = useMemo(
+  const rawRoomSegments = useMemo(
     () => page.rooms.map((room) => ({ room, segments: computeRoomWallSegments(room, doorWindowItems, scale) })),
     [page.rooms, doorWindowItems, scale],
   );
+
+  // Two rooms placed edge-to-edge (or one dragged to overlap another) each
+  // independently compute a solid wall at the shared boundary, so the same
+  // physical wall gets drawn twice at the exact same position -- classic
+  // z-fighting, seen as flickering "glitchy" walls. Rooms that share a
+  // rotation are compared in world space and any solid segment that lands
+  // on top of another room's is dropped, keeping only one.
+  const roomSegments = useMemo(() => {
+    const WALL_EPS = 0.15; // ft
+    const worldCenter = (room: (typeof rawRoomSegments)[number]['room'], seg: WallSegment) => {
+      const [wx, wz] = rotate2D(seg.x, seg.z, toRad(room.rotation));
+      return { x: room.x / scale + wx, z: room.y / scale + wz };
+    };
+    const dropped = new Set<string>(); // `${roomIdx}-${segIdx}`
+    for (let i = 0; i < rawRoomSegments.length; i++) {
+      for (let j = i + 1; j < rawRoomSegments.length; j++) {
+        const a = rawRoomSegments[i];
+        const b = rawRoomSegments[j];
+        if ((((a.room.rotation - b.room.rotation) % 360) + 360) % 360 > 1) continue;
+        for (let ai = 0; ai < a.segments.length; ai++) {
+          const segA = a.segments[ai];
+          if (segA.kind !== 'solid') continue;
+          const wa = worldCenter(a.room, segA);
+          for (let bi = 0; bi < b.segments.length; bi++) {
+            const key = `${j}-${bi}`;
+            if (dropped.has(key)) continue;
+            const segB = b.segments[bi];
+            if (segB.kind !== 'solid') continue;
+            const wb = worldCenter(b.room, segB);
+            const sameSize = Math.abs(segA.w - segB.w) < WALL_EPS && Math.abs(segA.d - segB.d) < WALL_EPS;
+            const samePos = Math.abs(wa.x - wb.x) < WALL_EPS && Math.abs(wa.z - wb.z) < WALL_EPS;
+            if (sameSize && samePos) dropped.add(key);
+          }
+        }
+      }
+    }
+    return rawRoomSegments.map(({ room, segments }, idx) => ({
+      room,
+      segments: segments.filter((_, si) => !dropped.has(`${idx}-${si}`)),
+    }));
+  }, [rawRoomSegments, scale]);
 
   const obstacles = useMemo<Obstacle[]>(() => {
     const list: Obstacle[] = [];
@@ -372,14 +424,20 @@ export function Scene3D() {
       <Canvas
         key={walkMode ? 'walk' : 'orbit'}
         shadows
+        gl={{ logarithmicDepthBuffer: true, preserveDrawingBuffer: true }}
         camera={{ position: [centerX + spanFt * 0.85, spanFt * 0.95, centerZ + spanFt * 0.85], fov: 40 }}
       >
-        <color attach="background" args={['#dbe3ea']} />
-        <ambientLight intensity={0.7} />
+        <DayNightSky center={[centerX, centerZ]} paused={dayNightPaused} onChange={setDayNight} />
+        <ambientLight intensity={dayNight.ambientIntensity} color={dayNight.ambientColor} />
         <directionalLight
-          position={[centerX + spanFt, spanFt * 1.6, centerZ + spanFt * 0.6]}
+          position={[
+            centerX + dayNight.sunDir[0] * spanFt * 3,
+            Math.max(dayNight.sunDir[1], 0.05) * spanFt * 3,
+            centerZ + dayNight.sunDir[2] * spanFt * 3,
+          ]}
           target-position={[centerX, 0, centerZ]}
-          intensity={1.15}
+          intensity={dayNight.sunIntensity}
+          color={dayNight.sunColor}
           castShadow
           shadow-mapSize={[2048, 2048]}
           shadow-camera-left={-spanFt * 1.2}
@@ -525,6 +583,28 @@ export function Scene3D() {
         ))}
       </Canvas>
       {walkMode && !inventoryOpen && <WalkHint active={locked || buildModeOn} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
+      {walkMode && (
+        <div className="pointer-events-auto absolute bottom-3 left-3 flex items-center gap-1.5 rounded-md bg-black/50 px-2 py-1 text-[11px] text-white/80">
+          <span>
+            {(() => {
+              const h = Math.floor(dayNight.hour);
+              const m = Math.floor((dayNight.hour - h) * 60);
+              const h12 = h % 12 === 0 ? 12 : h % 12;
+              return `${dayNight.isNight ? '🌙' : '☀️'} ${h12}:${m.toString().padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+            })()}
+          </span>
+          <button
+            title={dayNightPaused ? 'Resume time' : 'Pause time'}
+            onClick={() => setDayNightPaused((p) => !p)}
+            className="rounded px-1 hover:bg-white/20"
+          >
+            {dayNightPaused ? '▶' : '⏸'}
+          </button>
+          <button title="Take a photo" onClick={takePhoto} className="rounded px-1 hover:bg-white/20">
+            📷
+          </button>
+        </div>
+      )}
       {walkMode && locked && !sitting && !inventoryOpen && !buildModeOn && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <span className="rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press B to build</span>

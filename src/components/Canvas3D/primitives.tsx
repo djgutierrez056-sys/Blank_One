@@ -5,6 +5,16 @@ export function toRad(deg: number): number {
   return (-deg * Math.PI) / 180;
 }
 
+/** Rotates a local (x, z) offset by `rad` using the same convention as
+ * `toRad`/Three.js's Y-axis rotation, so `rotate2D(x, z, toRad(deg))` gives
+ * the same result as parenting a point at (x, 0, z) under a group rotated
+ * by `deg` (this app's degree convention). */
+export function rotate2D(x: number, z: number, rad: number): [number, number] {
+  const c = Math.cos(rad);
+  const s = Math.sin(rad);
+  return [x * c + z * s, -x * s + z * c];
+}
+
 interface BoxProps {
   x: number;
   y: number;
