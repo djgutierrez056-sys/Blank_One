@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
-import type { FurnitureItem, Page, Wall as WallEntity } from '../../state/types';
+import type { FurnitureItem, Page, Room, Wall as WallEntity } from '../../state/types';
 import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D, SEATING } from './Furniture3D';
 import { Door3D } from './Door3D';
@@ -34,14 +34,16 @@ function WallSegments({
   segments,
   wallColor,
   wallTexture,
+  wallSideOverrides,
   wallScale = 1,
 }: {
   segments: WallSegment[];
   wallColor?: string;
   wallTexture?: string;
+  wallSideOverrides?: Room['wallSideOverrides'];
   wallScale?: number;
 }) {
-  const color = wallColor ?? DEFAULT_WALL_COLOR;
+  const baseColor = wallColor ?? DEFAULT_WALL_COLOR;
   const WALL_H = WALL_H_BASE * wallScale;
   const DOOR_H = DOOR_H_BASE * wallScale;
   const WINDOW_SILL = WINDOW_SILL_BASE * wallScale;
@@ -49,47 +51,52 @@ function WallSegments({
   return (
     <>
       {segments.map((seg, i) => {
+        const override = wallSideOverrides?.[seg.side];
+        const color = override?.color ?? baseColor;
+        const texture = override?.texture ?? wallTexture;
         if (seg.kind === 'solid') {
           return (
-            <SurfaceBox
-              key={i}
-              x={seg.x}
-              y={WALL_H / 2}
-              z={seg.z}
-              w={seg.w}
-              h={WALL_H}
-              d={seg.d}
-              color={color}
-              textureId={wallTexture}
-              textureWidthFt={seg.w}
-              textureHeightFt={WALL_H}
-              castShadow={false}
-            />
+            <group key={i} userData={{ wallSide: seg.side }}>
+              <SurfaceBox
+                x={seg.x}
+                y={WALL_H / 2}
+                z={seg.z}
+                w={seg.w}
+                h={WALL_H}
+                d={seg.d}
+                color={color}
+                textureId={texture}
+                textureWidthFt={seg.w}
+                textureHeightFt={WALL_H}
+                castShadow={false}
+              />
+            </group>
           );
         }
         if (seg.kind === 'door') {
           // Only the transom above the doorway — the leaf itself is a
           // separate Door3D positioned by the door item's own transform.
           return (
-            <SurfaceBox
-              key={i}
-              x={seg.x}
-              y={DOOR_H + (WALL_H - DOOR_H) / 2}
-              z={seg.z}
-              w={seg.w}
-              h={WALL_H - DOOR_H}
-              d={seg.d}
-              color={color}
-              textureId={wallTexture}
-              textureWidthFt={seg.w}
-              textureHeightFt={WALL_H}
-              castShadow={false}
-            />
+            <group key={i} userData={{ wallSide: seg.side }}>
+              <SurfaceBox
+                x={seg.x}
+                y={DOOR_H + (WALL_H - DOOR_H) / 2}
+                z={seg.z}
+                w={seg.w}
+                h={WALL_H - DOOR_H}
+                d={seg.d}
+                color={color}
+                textureId={texture}
+                textureWidthFt={seg.w}
+                textureHeightFt={WALL_H}
+                castShadow={false}
+              />
+            </group>
           );
         }
         // window
         return (
-          <group key={i}>
+          <group key={i} userData={{ wallSide: seg.side }}>
             <SurfaceBox
               x={seg.x}
               y={WINDOW_SILL / 2}
@@ -98,7 +105,7 @@ function WallSegments({
               h={WINDOW_SILL}
               d={seg.d}
               color={color}
-              textureId={wallTexture}
+              textureId={texture}
               textureWidthFt={seg.w}
               textureHeightFt={WALL_H}
               castShadow={false}
@@ -122,7 +129,7 @@ function WallSegments({
               h={WALL_H - WINDOW_HEADER}
               d={seg.d}
               color={color}
-              textureId={wallTexture}
+              textureId={texture}
               textureWidthFt={seg.w}
               textureHeightFt={WALL_H}
               castShadow={false}
@@ -401,9 +408,16 @@ export function Scene3D() {
     );
   };
 
-  const handlePaintWall = (roomId: string) => {
+  const handlePaintWall = (roomId: string, side: string) => {
     if (!heldPaint) return;
-    updateEntity(roomId, { wallColor: heldPaint.color, wallTexture: heldPaint.texture }, { commit: true });
+    const room = page.rooms.find((r) => r.id === roomId);
+    if (!room) return;
+    const key = side as 'top' | 'bottom' | 'left' | 'right';
+    updateEntity(
+      roomId,
+      { wallSideOverrides: { ...room.wallSideOverrides, [key]: { color: heldPaint.color, texture: heldPaint.texture } } },
+      { commit: true },
+    );
   };
 
   const handlePaintPick = (paint: Paint | null) => {
@@ -492,7 +506,13 @@ export function Scene3D() {
             <group key={room.id} position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
               <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
               <group userData={{ wallRoomId: room.id }}>
-                <WallSegments segments={segments} wallColor={room.wallColor} wallTexture={room.wallTexture} wallScale={wallScale} />
+                <WallSegments
+                  segments={segments}
+                  wallColor={room.wallColor}
+                  wallTexture={room.wallTexture}
+                  wallSideOverrides={room.wallSideOverrides}
+                  wallScale={wallScale}
+                />
               </group>
             </group>
           );

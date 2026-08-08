@@ -13,6 +13,10 @@ export interface Room {
   wallThickness: number;
   wallColor?: string; // 3D-only; undefined = the default wall color
   wallTexture?: string; // 3D-only texture id (see textures.ts), undefined = plain color
+  /** 3D-only: per-side color/texture overrides (e.g. from clicking one wall
+   * with the in-walkthrough paint tool) — a side with no entry here falls
+   * back to wallColor/wallTexture above. */
+  wallSideOverrides?: Partial<Record<'top' | 'bottom' | 'left' | 'right', { color?: string; texture?: string }>>;
   locked?: boolean;
 }
 

@@ -37,8 +37,11 @@ export interface CrosshairTarget {
    * items don't end up floating mid-air stuck to a wall. */
   canPlace: boolean;
   /** The room whose wall this point is on, if any — lets the paint tool
-   * repaint a room's walls by clicking one, without an itemId being set. */
+   * repaint that one wall by clicking it, without an itemId being set. */
   wallRoomId: string | null;
+  /** Which of the room's 4 sides this point is on — painting only ever
+   * touches this one side, not the whole room. */
+  wallSide: string | null;
 }
 
 export interface ItemRect {
@@ -59,10 +62,14 @@ function findItem(object: THREE.Object3D): { id: string; name: string } | null {
   return null;
 }
 
-function findWallRoom(object: THREE.Object3D): string | null {
+function findWallInfo(object: THREE.Object3D): { roomId: string; side: string } | null {
   let cur: THREE.Object3D | null = object;
+  let side: string | null = null;
   while (cur) {
-    if (cur.userData?.wallRoomId) return cur.userData.wallRoomId as string;
+    if (!side && cur.userData?.wallSide) side = cur.userData.wallSide as string;
+    if (cur.userData?.wallRoomId) {
+      return side ? { roomId: cur.userData.wallRoomId as string, side } : null;
+    }
     cur = cur.parent;
   }
   return null;
@@ -149,7 +156,7 @@ export function BuildControls({
   onDeleteItem: (itemId: string) => void;
   onMoveItem: (itemId: string, x: number, y: number, elevation: number) => void;
   onCornerResize: (itemId: string, changes: { x: number; y: number; width: number; height: number }) => void;
-  onPaintWall: (roomId: string) => void;
+  onPaintWall: (roomId: string, side: string) => void;
 }) {
   const { camera, scene, gl } = useThree();
   const targetRef = useRef<CrosshairTarget | null>(null);
@@ -266,8 +273,8 @@ export function BuildControls({
         };
         return;
       }
-      if (paintRef.current && t?.wallRoomId && !t.itemId) {
-        onPaintWall(t.wallRoomId);
+      if (paintRef.current && t?.wallRoomId && t.wallSide && !t.itemId) {
+        onPaintWall(t.wallRoomId, t.wallSide);
         return;
       }
       if (t?.itemId) {
@@ -442,6 +449,7 @@ export function BuildControls({
             itemName: targetRef.current?.itemName ?? null,
             canPlace: false,
             wallRoomId: null,
+            wallSide: null,
           };
           onTargetChange(targetRef.current);
         }
@@ -462,12 +470,14 @@ export function BuildControls({
           const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
           canPlace = worldNormal.y > 0.5;
         }
+        const wallInfo = found ? null : findWallInfo(hit.object);
         next = {
           point: [hit.point.x, hit.point.y, hit.point.z],
           itemId: found?.id ?? null,
           itemName: found?.name ?? null,
           canPlace,
-          wallRoomId: found ? null : findWallRoom(hit.object),
+          wallRoomId: wallInfo?.roomId ?? null,
+          wallSide: wallInfo?.side ?? null,
         };
         break;
       }
@@ -475,6 +485,7 @@ export function BuildControls({
         (next?.itemId ?? null) !== (targetRef.current?.itemId ?? null) ||
         (next?.canPlace ?? null) !== (targetRef.current?.canPlace ?? null) ||
         (next?.wallRoomId ?? null) !== (targetRef.current?.wallRoomId ?? null) ||
+        (next?.wallSide ?? null) !== (targetRef.current?.wallSide ?? null) ||
         (next === null) !== (targetRef.current === null);
       targetRef.current = next;
       if (changed) onTargetChange(next);

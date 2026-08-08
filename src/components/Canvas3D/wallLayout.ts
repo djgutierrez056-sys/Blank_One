@@ -50,8 +50,11 @@ function buildTimeline(length: number, gapsIn: GapInterval[]) {
  * axis-aligned relative to the room — `w`/`d` already encode which way the
  * run goes (top/bottom sides put the long dimension in `w`, left/right put
  * it in `d`), so no local rotation is needed on top of the room's own. */
+export type WallSide = 'top' | 'bottom' | 'left' | 'right';
+
 export interface WallSegment {
   kind: 'solid' | 'door' | 'window';
+  side: WallSide;
   x: number;
   z: number;
   w: number;
@@ -126,12 +129,12 @@ export function computeRoomWallSegments(room: Room, doorWindowItems: FurnitureIt
         const [x, z] = sidePoint(side, midAdj, 0);
         const w = rotY === 0 ? effLen : t;
         const d = rotY === 0 ? t : effLen;
-        out.push({ kind: 'solid', x, z, w, d, extendStart, extendEnd });
+        out.push({ kind: 'solid', side: key, x, z, w, d, extendStart, extendEnd });
       } else {
         const [x, z] = sidePoint(side, mid, 0);
         const w = rotY === 0 ? segLen : t;
         const d = rotY === 0 ? t : segLen;
-        out.push({ kind: seg.kind, x, z, w, d, extendStart: 0, extendEnd: 0 });
+        out.push({ kind: seg.kind, side: key, x, z, w, d, extendStart: 0, extendEnd: 0 });
       }
     }
   }
