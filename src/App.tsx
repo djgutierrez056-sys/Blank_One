@@ -5,6 +5,7 @@ import { CatalogPanel } from './components/Sidebar/CatalogPanel';
 import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
 import { Toolbar } from './components/Toolbar/Toolbar';
 import { PageTabs } from './components/Toolbar/PageTabs';
+import { ChatPanel } from './components/Toolbar/ChatPanel';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { joinRoom } from './lib/collab';
 import { usePlannerStore } from './state/store';
@@ -24,8 +25,9 @@ function App() {
       <PageTabs />
       <div className="flex min-h-0 flex-1">
         {!view3D && <CatalogPanel />}
-        <main className="min-w-0 flex-1">
+        <main className="relative min-w-0 flex-1">
           {view3D ? <Scene3D /> : <PlanCanvas />}
+          <ChatPanel />
         </main>
         <PropertiesPanel />
       </div>

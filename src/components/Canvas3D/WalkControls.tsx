@@ -4,6 +4,7 @@ import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { resolveCollisions, type Obstacle } from './collision';
 import { broadcastAvatar } from '../../lib/collab';
+import { isTypingTarget } from '../../utils/dom';
 
 const EYE_HEIGHT = 5.5;
 const SIT_EYE_HEIGHT = 3.0;
@@ -80,6 +81,7 @@ export function WalkControls({
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       if (MOVE_KEYS.has(e.code)) e.preventDefault();
       keys.current[e.code] = true;
       if (e.code === 'KeyE' && nearDoorRef.current) onToggleDoor(nearDoorRef.current);
@@ -100,6 +102,7 @@ export function WalkControls({
       }
     };
     const up = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       keys.current[e.code] = false;
     };
     window.addEventListener('keydown', down);
@@ -170,7 +173,11 @@ export function WalkControls({
     }
 
     const yawDeg = (-camera.rotation.y * 180) / Math.PI;
-    broadcastAvatar(camera.position.x, camera.position.y, camera.position.z, yawDeg, !!sittingRef.current);
+    // Broadcast the foot/base position, not the eye -- PlayerAvatar builds
+    // its model upward from the ground, so sending eye height here (as
+    // before) made every remote avatar float ~5.5ft off the floor.
+    const footY = camera.position.y - (sittingRef.current ? SIT_EYE_HEIGHT : EYE_HEIGHT);
+    broadcastAvatar(camera.position.x, footY, camera.position.z, yawDeg, !!sittingRef.current);
   });
 
   useEffect(() => {

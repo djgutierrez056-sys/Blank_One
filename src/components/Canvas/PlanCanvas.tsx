@@ -9,7 +9,6 @@ import { TextLabelShape } from './TextLabelShape';
 import { snapValue } from '../../utils/geometry';
 import { findPointSnap } from '../../utils/wallSnap';
 import { broadcastCursor } from '../../lib/collab';
-import { ChatPanel } from '../Toolbar/ChatPanel';
 import { LockedItemsPanel } from '../Toolbar/LockedItemsPanel';
 
 const WALL_THICKNESS = 6;
@@ -601,7 +600,6 @@ export function PlanCanvas() {
         </button>
       </div>
 
-      <ChatPanel />
       <LockedItemsPanel />
 
       {editingText && (

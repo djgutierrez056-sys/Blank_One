@@ -1,13 +1,9 @@
 import { useEffect } from 'react';
 import { usePlannerStore } from '../state/store';
+import { isTypingTarget } from '../utils/dom';
 
 export function useKeyboardShortcuts() {
   useEffect(() => {
-    function isTypingTarget(target: EventTarget | null) {
-      const el = target as HTMLElement | null;
-      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
-    }
-
     function onKeyDown(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       const store = usePlannerStore.getState();

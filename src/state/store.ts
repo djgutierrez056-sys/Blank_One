@@ -341,7 +341,12 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       return { remoteAvatars: next };
     }),
   applyRemoteProject: (project) => {
-    set({ project: normalizeProject(project) });
+    // Which page you're looking at is a local viewing choice, not shared
+    // plan data -- without this, one person switching pages would yank
+    // everyone else's view to that same page. Keep our own page unless it
+    // no longer exists in the incoming project (e.g. it was deleted).
+    const localActivePageId = get().project.activePageId;
+    set({ project: normalizeProject({ ...project, activePageId: localActivePageId }) });
     persist(get().project);
   },
   addChatMessage: (message) =>
