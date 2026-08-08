@@ -76,6 +76,7 @@ interface PlannerState extends HistoryState {
   lockedPanelOpen: boolean;
   view3D: boolean;
   walkMode: boolean;
+  openDoors: Record<string, boolean>;
 
   setCanvasSize: (size: { width: number; height: number }) => void;
   setTool: (tool: ToolMode) => void;
@@ -101,6 +102,7 @@ interface PlannerState extends HistoryState {
   setLockedPanelOpen: (open: boolean) => void;
   setView3D: (on: boolean) => void;
   setWalkMode: (on: boolean) => void;
+  toggleDoor: (id: string) => void;
 
   beginChange: () => void;
   addRoom: (partial?: Partial<Room>) => string;
@@ -226,6 +228,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   lockedPanelOpen: false,
   view3D: false,
   walkMode: false,
+  openDoors: {},
 
   setCanvasSize: (size) => set({ canvasSize: size }),
   setTool: (tool) => set({ tool, selectedIds: tool === 'select' ? get().selectedIds : [] }),
@@ -320,7 +323,8 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
   setLockedPanelOpen: (open) => set({ lockedPanelOpen: open }),
   setView3D: (on) => set({ view3D: on, walkMode: on ? get().walkMode : false }),
-  setWalkMode: (on) => set({ walkMode: on }),
+  setWalkMode: (on) => set({ walkMode: on, openDoors: on ? get().openDoors : {} }),
+  toggleDoor: (id) => set((s) => ({ openDoors: { ...s.openDoors, [id]: !s.openDoors[id] } })),
 
   beginChange: () => {
     const { project, past } = get();

@@ -1,176 +1,69 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { getActivePage, usePlannerStore } from '../../state/store';
-import type { FurnitureItem, Page, Room, Wall as WallEntity } from '../../state/types';
+import type { Page, Wall as WallEntity } from '../../state/types';
 import { rectCenter } from '../../utils/wallSnap';
 import { Furniture3D } from './Furniture3D';
+import { Door3D } from './Door3D';
 import { Box, toRad } from './primitives';
-import { WalkControls, WalkHint } from './WalkControls';
+import { WalkControls, WalkHint, type DoorTarget } from './WalkControls';
+import { computeRoomWallSegments, DOOR_KINDS, WINDOW_KINDS, type WallSegment } from './wallLayout';
+import { doorLeafObstacle, isDoorItem, rectObstacle, type Obstacle } from './collision';
 
 const WALL_H = 8;
 const WALL_COLOR = '#d9d4c8';
 const DOOR_H = 6.75;
 const WINDOW_SILL = 2.5;
 const WINDOW_HEADER = 6.5;
-const DOOR_KINDS = new Set(['door', 'sliding-door']);
-const WINDOW_KINDS = new Set(['window', 'large-window']);
 
-interface GapInterval {
-  start: number;
-  end: number;
-  kind: 'door' | 'window';
-}
+// Flat/wall-mounted items a walker should be able to step through.
+const NON_BLOCKING = new Set(['rug', 'mirror', 'mirror-bath', 'floor-mirror', 'whiteboard']);
 
-interface Side {
-  origin: [number, number];
-  dirU: [number, number];
-  dirV: [number, number];
-  length: number;
-}
-
-function sidePoint(side: Side, u: number, v: number): [number, number] {
-  return [side.origin[0] + side.dirU[0] * u + side.dirV[0] * v, side.origin[1] + side.dirU[1] * u + side.dirV[1] * v];
-}
-
-function buildTimeline(length: number, gapsIn: GapInterval[]) {
-  const gaps = gapsIn
-    .map((g) => ({ start: Math.max(0, g.start), end: Math.min(length, g.end), kind: g.kind }))
-    .filter((g) => g.end - g.start > 0.05)
-    .sort((a, b) => a.start - b.start);
-  const merged: GapInterval[] = [];
-  for (const g of gaps) {
-    const last = merged[merged.length - 1];
-    if (last && g.start <= last.end + 0.05) {
-      last.end = Math.max(last.end, g.end);
-    } else {
-      merged.push({ ...g });
-    }
-  }
-  const segments: { from: number; to: number; kind: 'solid' | 'door' | 'window' }[] = [];
-  let cursor = 0;
-  for (const g of merged) {
-    if (g.start - cursor > 0.05) segments.push({ from: cursor, to: g.start, kind: 'solid' });
-    segments.push({ from: g.start, to: g.end, kind: g.kind });
-    cursor = g.end;
-  }
-  if (length - cursor > 0.05) segments.push({ from: cursor, to: length, kind: 'solid' });
-  return segments;
-}
-
-/** One straight run of wall (one side of a room), split into solid segments
- * plus door/window openings computed by the caller. */
-function WallRun({ side, gaps, thickness }: { side: Side; gaps: GapInterval[]; thickness: number }) {
-  const segments = buildTimeline(side.length, gaps);
-  const rotY = side.dirU[0] !== 0 ? 0 : Math.PI / 2;
-
+function WallSegments({ segments }: { segments: WallSegment[] }) {
   return (
     <>
       {segments.map((seg, i) => {
-        const mid = (seg.from + seg.to) / 2;
-        const segLen = seg.to - seg.from;
-
         if (seg.kind === 'solid') {
-          const extendStart = seg.from <= 0.05 ? thickness / 2 : 0;
-          const extendEnd = seg.to >= side.length - 0.05 ? thickness / 2 : 0;
-          const effLen = segLen + extendStart + extendEnd;
-          const midAdj = mid + (extendEnd - extendStart) / 2;
-          const [x, z] = sidePoint(side, midAdj, 0);
-          const w = rotY === 0 ? effLen : thickness;
-          const d = rotY === 0 ? thickness : effLen;
-          return <Box key={i} x={x} y={WALL_H / 2} z={z} w={w} h={WALL_H} d={d} color={WALL_COLOR} castShadow={false} />;
+          return <Box key={i} x={seg.x} y={WALL_H / 2} z={seg.z} w={seg.w} h={WALL_H} d={seg.d} color={WALL_COLOR} castShadow={false} />;
         }
-
-        const [x, z] = sidePoint(side, mid, 0);
-        const w = rotY === 0 ? segLen : thickness;
-        const d = rotY === 0 ? thickness : segLen;
-
         if (seg.kind === 'door') {
+          // Only the transom above the doorway — the leaf itself is a
+          // separate Door3D positioned by the door item's own transform.
           return (
-            <group key={i}>
-              <Box x={x} y={DOOR_H / 2} z={z} w={w} h={DOOR_H} d={d} color="#8a6a45" castShadow={false} />
-              <Box x={x} y={DOOR_H + (WALL_H - DOOR_H) / 2} z={z} w={w} h={WALL_H - DOOR_H} d={d} color={WALL_COLOR} castShadow={false} />
-            </group>
+            <Box
+              key={i}
+              x={seg.x}
+              y={DOOR_H + (WALL_H - DOOR_H) / 2}
+              z={seg.z}
+              w={seg.w}
+              h={WALL_H - DOOR_H}
+              d={seg.d}
+              color={WALL_COLOR}
+              castShadow={false}
+            />
           );
         }
-
         // window
         return (
           <group key={i}>
-            <Box x={x} y={WINDOW_SILL / 2} z={z} w={w} h={WINDOW_SILL} d={d} color={WALL_COLOR} castShadow={false} />
+            <Box x={seg.x} y={WINDOW_SILL / 2} z={seg.z} w={seg.w} h={WINDOW_SILL} d={seg.d} color={WALL_COLOR} castShadow={false} />
             <Box
-              x={x}
+              x={seg.x}
               y={WINDOW_SILL + (WINDOW_HEADER - WINDOW_SILL) / 2}
-              z={z}
-              w={w}
+              z={seg.z}
+              w={seg.w}
               h={WINDOW_HEADER - WINDOW_SILL}
-              d={d * 0.7}
+              d={seg.d * 0.7}
               color="#bfe0ea"
               opacity={0.5}
               castShadow={false}
             />
-            <Box x={x} y={WINDOW_HEADER + (WALL_H - WINDOW_HEADER) / 2} z={z} w={w} h={WALL_H - WINDOW_HEADER} d={d} color={WALL_COLOR} castShadow={false} />
+            <Box x={seg.x} y={WINDOW_HEADER + (WALL_H - WINDOW_HEADER) / 2} z={seg.z} w={seg.w} h={WALL_H - WINDOW_HEADER} d={seg.d} color={WALL_COLOR} castShadow={false} />
           </group>
         );
       })}
     </>
-  );
-}
-
-function Room3D({ room, scale, doorWindowItems }: { room: Room; scale: number; doorWindowItems: FurnitureItem[] }) {
-  const wFt = room.width / scale;
-  const hFt = room.height / scale;
-  const t = room.wallThickness / scale;
-  const rad = (room.rotation * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-
-  const sides: Record<'top' | 'bottom' | 'left' | 'right', Side> = {
-    top: { origin: [0, 0], dirU: [1, 0], dirV: [0, 1], length: wFt },
-    bottom: { origin: [0, hFt], dirU: [1, 0], dirV: [0, -1], length: wFt },
-    left: { origin: [0, 0], dirU: [0, 1], dirV: [1, 0], length: hFt },
-    right: { origin: [wFt, 0], dirU: [0, 1], dirV: [-1, 0], length: hFt },
-  };
-  const gapLists: Record<'top' | 'bottom' | 'left' | 'right', GapInterval[]> = { top: [], bottom: [], left: [], right: [] };
-
-  for (const item of doorWindowItems) {
-    const isDoor = DOOR_KINDS.has(item.catalogId);
-    const kind: 'door' | 'window' = isDoor ? 'door' : 'window';
-    const center = rectCenter(item.x, item.y, item.width, item.height, item.rotation);
-    const dx = center.x - room.x;
-    const dy = center.y - room.y;
-    const lx = (dx * cos + dy * sin) / scale;
-    const ly = (-dx * sin + dy * cos) / scale;
-    const lenFt = item.width / scale;
-    const half = lenFt / 2;
-    const angleDiff = (((item.rotation - room.rotation) % 360) + 360) % 360;
-    const nearHoriz = angleDiff < 12 || Math.abs(angleDiff - 180) < 12;
-    const nearVert = Math.abs(angleDiff - 90) < 12 || Math.abs(angleDiff - 270) < 12;
-    const thresh = t / 2 + 0.4;
-
-    if (nearHoriz) {
-      if (Math.abs(ly) < thresh && lx >= -0.5 && lx <= wFt + 0.5) {
-        gapLists.top.push({ start: lx - half, end: lx + half, kind });
-      } else if (Math.abs(ly - hFt) < thresh && lx >= -0.5 && lx <= wFt + 0.5) {
-        gapLists.bottom.push({ start: lx - half, end: lx + half, kind });
-      }
-    } else if (nearVert) {
-      if (Math.abs(lx) < thresh && ly >= -0.5 && ly <= hFt + 0.5) {
-        gapLists.left.push({ start: ly - half, end: ly + half, kind });
-      } else if (Math.abs(lx - wFt) < thresh && ly >= -0.5 && ly <= hFt + 0.5) {
-        gapLists.right.push({ start: ly - half, end: ly + half, kind });
-      }
-    }
-  }
-
-  return (
-    <group position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
-      <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
-      <WallRun side={sides.top} gaps={gapLists.top} thickness={t} />
-      <WallRun side={sides.bottom} gaps={gapLists.bottom} thickness={t} />
-      <WallRun side={sides.left} gaps={gapLists.left} thickness={t} />
-      <WallRun side={sides.right} gaps={gapLists.right} thickness={t} />
-    </group>
   );
 }
 
@@ -212,15 +105,61 @@ export function Scene3D() {
   const page = getActivePage(project);
   const scale = project.scale;
   const walkMode = usePlannerStore((s) => s.walkMode);
+  const openDoors = usePlannerStore((s) => s.openDoors);
+  const toggleDoor = usePlannerStore((s) => s.toggleDoor);
   const [locked, setLocked] = useState(false);
+  const [nearDoor, setNearDoor] = useState<string | null>(null);
 
   const doorWindowItems = page.items.filter((i) => DOOR_KINDS.has(i.catalogId) || WINDOW_KINDS.has(i.catalogId));
+  const doorItems = doorWindowItems.filter(isDoorItem);
   const regularItems = page.items.filter((i) => !DOOR_KINDS.has(i.catalogId) && !WINDOW_KINDS.has(i.catalogId));
 
   const bounds = computeBounds(page, scale);
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minY + bounds.maxY) / 2;
   const spanFt = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 12);
+
+  const roomSegments = useMemo(
+    () => page.rooms.map((room) => ({ room, segments: computeRoomWallSegments(room, doorWindowItems, scale) })),
+    [page.rooms, doorWindowItems, scale],
+  );
+
+  const obstacles = useMemo<Obstacle[]>(() => {
+    const list: Obstacle[] = [];
+    for (const { room, segments } of roomSegments) {
+      const originX = room.x / scale;
+      const originZ = room.y / scale;
+      const rotY = toRad(room.rotation);
+      for (const seg of segments) {
+        if (seg.kind === 'door') continue; // handled per-door-item below
+        list.push(rectObstacle(originX, originZ, rotY, seg.x, seg.z, seg.w, seg.d));
+      }
+    }
+    for (const wall of page.walls) {
+      const length = wall.width / scale;
+      const t = wall.height / scale;
+      list.push(rectObstacle(wall.x / scale, wall.y / scale, toRad(wall.rotation), length / 2, 0, length, t));
+    }
+    for (const item of regularItems) {
+      if (NON_BLOCKING.has(item.catalogId)) continue;
+      const w = item.width / scale;
+      const d = item.height / scale;
+      list.push(rectObstacle(item.x / scale, item.y / scale, toRad(item.rotation), w / 2, d / 2, w, d));
+    }
+    for (const item of doorItems) {
+      if (!openDoors[item.id]) list.push(doorLeafObstacle(item, scale, false));
+    }
+    return list;
+  }, [roomSegments, page.walls, regularItems, doorItems, openDoors, scale]);
+
+  const doorTargets = useMemo<DoorTarget[]>(
+    () =>
+      doorItems.map((item) => {
+        const center = rectCenter(item.x, item.y, item.width, item.height, item.rotation);
+        return { id: item.id, x: center.x / scale, z: center.y / scale };
+      }),
+    [doorItems, scale],
+  );
 
   return (
     <div className="relative h-full w-full bg-slate-200">
@@ -250,11 +189,21 @@ export function Scene3D() {
           <planeGeometry args={[spanFt * 4, spanFt * 4]} />
           <meshStandardMaterial color="#eef1f4" />
         </mesh>
-        {page.rooms.map((room) => (
-          <Room3D key={room.id} room={room} scale={scale} doorWindowItems={doorWindowItems} />
-        ))}
+        {roomSegments.map(({ room, segments }) => {
+          const wFt = room.width / scale;
+          const hFt = room.height / scale;
+          return (
+            <group key={room.id} position={[room.x / scale, 0, room.y / scale]} rotation={[0, toRad(room.rotation), 0]}>
+              <Box x={wFt / 2} y={0.03} z={hFt / 2} w={wFt} h={0.06} d={hFt} color={room.fill} castShadow={false} />
+              <WallSegments segments={segments} />
+            </group>
+          );
+        })}
         {page.walls.map((wall) => (
           <Wall3D key={wall.id} wall={wall} scale={scale} />
+        ))}
+        {doorItems.map((item) => (
+          <Door3D key={item.id} item={item} scale={scale} open={!!openDoors[item.id]} />
         ))}
         {regularItems.map((item) => (
           <group key={item.id} position={[item.x / scale, 0, item.y / scale]} rotation={[0, toRad(item.rotation), 0]}>
@@ -262,7 +211,14 @@ export function Scene3D() {
           </group>
         ))}
         {walkMode ? (
-          <WalkControls spawn={[centerX, 0, centerZ]} onLockChange={setLocked} />
+          <WalkControls
+            spawn={[centerX, 0, centerZ]}
+            onLockChange={setLocked}
+            obstacles={obstacles}
+            doors={doorTargets}
+            onToggleDoor={toggleDoor}
+            onNearDoorChange={setNearDoor}
+          />
         ) : (
           <OrbitControls
             target={[centerX, 1, centerZ]}
@@ -272,7 +228,7 @@ export function Scene3D() {
           />
         )}
       </Canvas>
-      {walkMode && <WalkHint active={locked} />}
+      {walkMode && <WalkHint active={locked} nearDoor={!!nearDoor} />}
     </div>
   );
 }
