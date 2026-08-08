@@ -1,6 +1,8 @@
 import type { JSX } from 'react';
 import type { FurnitureItem } from '../../state/types';
 import { darken } from '../Canvas/FurnitureIcon';
+import { GLTFFurniture } from './GLTFFurniture';
+import { MODEL_MAP } from './modelMap';
 import { Box, Cone, Cyl, Sphere, Torus } from './primitives';
 
 function fourLegs(w: number, d: number, legR: number, legH: number, color: string, inset = 0.15) {
@@ -49,6 +51,10 @@ export function Furniture3D({ item, w, d }: { item: FurnitureItem; w: number; d:
   const cx = w / 2;
   const cz = d / 2;
   const id = item.catalogId;
+
+  if (MODEL_MAP[id]) {
+    return <GLTFFurniture catalogId={id} w={w} d={d} />;
+  }
 
   if (SEATING.has(id)) {
     const seatH = 1.3;
