@@ -16,6 +16,7 @@ interface RoomRow {
 }
 
 const CURSOR_THROTTLE_MS = 80;
+const AVATAR_THROTTLE_MS = 100;
 const PUSH_DEBOUNCE_MS = 400;
 const CURSOR_COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 const ADJECTIVES = ['Swift', 'Calm', 'Bright', 'Quiet', 'Bold', 'Sunny', 'Cozy', 'Merry'];
@@ -75,6 +76,7 @@ let unsubscribeStore: (() => void) | null = null;
 let pushTimer: ReturnType<typeof setTimeout> | null = null;
 let pruneInterval: ReturnType<typeof setInterval> | null = null;
 let lastCursorSentAt = 0;
+let lastAvatarSentAt = 0;
 
 function applyRemote(project: Project) {
   applyingRemote = true;
@@ -123,9 +125,24 @@ export async function joinRoom(roomId: string): Promise<void> {
     usePlannerStore.getState().setRemoteCursor(p.clientId, { x: p.x, y: p.y, name: p.name, color: p.color });
   });
 
+  ch.on('broadcast', { event: 'avatar' }, ({ payload }) => {
+    const p = payload as { clientId: string; x: number; y: number; z: number; yawDeg: number; sitting: boolean; name: string; color: string };
+    if (p.clientId === clientId) return;
+    usePlannerStore.getState().setRemoteAvatar(p.clientId, {
+      x: p.x,
+      y: p.y,
+      z: p.z,
+      yawDeg: p.yawDeg,
+      sitting: p.sitting,
+      name: p.name,
+      color: p.color,
+    });
+  });
+
   ch.on('broadcast', { event: 'leave' }, ({ payload }) => {
     const p = payload as { clientId: string };
     usePlannerStore.getState().removeRemoteCursor(p.clientId);
+    usePlannerStore.getState().removeRemoteAvatar(p.clientId);
   });
 
   ch.on('broadcast', { event: 'chat' }, ({ payload }) => {
@@ -144,6 +161,7 @@ export async function joinRoom(roomId: string): Promise<void> {
   pruneInterval = setInterval(() => {
     usePlannerStore.getState().pruneStaleCursors(6000);
     usePlannerStore.getState().pruneExpiredBubbles();
+    usePlannerStore.getState().pruneStaleAvatars(6000);
   }, 1500);
 
   unsubscribeStore = usePlannerStore.subscribe((state, prev) => {
@@ -182,6 +200,7 @@ export async function leaveRoom(): Promise<void> {
   currentRoomId = null;
   usePlannerStore.getState().setCollabStatus('idle');
   usePlannerStore.getState().clearRemoteCursors();
+  usePlannerStore.getState().clearRemoteAvatars();
 }
 
 export function getCurrentRoomId(): string | null {
@@ -194,6 +213,14 @@ export function broadcastCursor(x: number, y: number): void {
   if (now - lastCursorSentAt < CURSOR_THROTTLE_MS) return;
   lastCursorSentAt = now;
   channel.send({ type: 'broadcast', event: 'cursor', payload: { clientId, x, y, name: clientName, color: clientColor } });
+}
+
+export function broadcastAvatar(x: number, y: number, z: number, yawDeg: number, sitting: boolean): void {
+  if (!channel) return;
+  const now = Date.now();
+  if (now - lastAvatarSentAt < AVATAR_THROTTLE_MS) return;
+  lastAvatarSentAt = now;
+  channel.send({ type: 'broadcast', event: 'avatar', payload: { clientId, x, y, z, yawDeg, sitting, name: clientName, color: clientColor } });
 }
 
 export function sendChatMessage(text: string): void {

@@ -18,9 +18,13 @@ export const DEFAULT_HOTBAR: string[] = [
   'rug',
 ];
 
-const MAX_REACH = 15; // ft
+const MAX_REACH = 30; // ft
 const RESIZE_STEP = 0.04; // fraction per wheel notch
 const PREVIEW_HEIGHT = 2; // ft, purely illustrative — doesn't need to match the real model
+const HANDLE_GRAB_RADIUS = 0.8; // ft, how close the cursor's floor point must be to a corner to grab it
+const HANDLE_SIZE = 0.35; // ft
+const LOOK_SENSITIVITY = 0.0022;
+const PITCH_LIMIT = Math.PI / 2 - 0.01;
 export const MIN_SIZE_FT = 0.5;
 export const MAX_SIZE_FT = 20;
 
@@ -107,14 +111,13 @@ interface MoveDrag {
 
 type DragState = CornerDrag | MoveDrag;
 
-/** Minecraft-style building while the mouse stays locked: a fixed forward
- * raycast from the camera finds whatever's under the crosshair — an empty
- * surface (floor, or the top of another item) to place on, or an existing
- * item to resize/rotate/remove/move. A translucent footprint preview follows
- * the crosshair (green when placeable, red when not) so it's clear where G
- * will land before you press it. Hold left-click on an existing item to drag
- * it around; hold right-click near one of its corners to resize just that
- * corner, anchored on the opposite one. No mouse cursor is ever needed. */
+/** Sims/House-Flipper-style building: a free mouse cursor (never locked)
+ * drives everything, decoupled from where the camera looks. Right-click
+ * drag rotates the view; left-click drag on an item moves it (auto-snapping
+ * onto whatever surface is under the cursor); left-click drag on one of its
+ * corner handles resizes just that corner, anchored on the opposite one.
+ * The active item's handles are visible before you ever click, so it's
+ * always clear what you're about to grab. */
 export function BuildControls({
   active,
   hotbar,
@@ -148,7 +151,7 @@ export function BuildControls({
   onCornerResize: (itemId: string, changes: { x: number; y: number; width: number; height: number }) => void;
   onPaintWall: (roomId: string) => void;
 }) {
-  const { camera, scene } = useThree();
+  const { camera, scene, gl } = useThree();
   const targetRef = useRef<CrosshairTarget | null>(null);
   const hotbarRef = useRef(hotbar);
   hotbarRef.current = hotbar;
@@ -167,6 +170,37 @@ export function BuildControls({
   const dragPreviewRef = useRef<THREE.Mesh>(null);
   const dragRef = useRef<DragState | null>(null);
   const dragResultRef = useRef<{ x: number; y: number; width: number; height: number; elevation: number } | null>(null);
+
+  // Cursor position in NDC (-1..1), updated from real mouse coordinates —
+  // this is what everything raycasts from instead of the camera direction,
+  // so dragging an item never fights with looking around.
+  const ndc = useRef(new THREE.Vector2(0, 0));
+  const hoveredItemIdRef = useRef<string | null>(null);
+  const hoveredCornerRef = useRef<number | null>(null);
+  const handleCornersRef = useRef<[number, number][] | null>(null); // world ft, for whichever item is hovered
+  const handleElevationRef = useRef(0);
+  const handleMeshRefs = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)];
+
+  const lookDragRef = useRef(false);
+  const lastMouseRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const mousemove = (e: MouseEvent) => {
+      const rect = gl.domElement.getBoundingClientRect();
+      ndc.current.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      if (lookDragRef.current && activeRef.current) {
+        const dx = e.clientX - lastMouseRef.current.x;
+        const dy = e.clientY - lastMouseRef.current.y;
+        const euler = new THREE.Euler().setFromQuaternion(camera.quaternion, 'YXZ');
+        euler.y -= dx * LOOK_SENSITIVITY;
+        euler.x = Math.min(PITCH_LIMIT, Math.max(-PITCH_LIMIT, euler.x - dy * LOOK_SENSITIVITY));
+        camera.quaternion.setFromEuler(euler);
+      }
+      lastMouseRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('mousemove', mousemove);
+    return () => window.removeEventListener('mousemove', mousemove);
+  }, [camera, gl]);
 
   useEffect(() => {
     const endDrag = () => {
@@ -192,33 +226,51 @@ export function BuildControls({
         const t = targetRef.current;
         const catalogId = hotbarRef.current[hotbarIndexRef.current];
         if (t?.canPlace && catalogId && !paintRef.current) {
-          const yawDeg = (-camera.rotation.y * 180) / Math.PI;
-          onPlace(catalogId, t.point, yawDeg);
+          onPlace(catalogId, t.point, 0);
         }
       } else if (e.code === 'KeyR') {
-        const t = targetRef.current;
-        if (t?.itemId) onRotateItem(t.itemId);
+        if (hoveredItemIdRef.current) onRotateItem(hoveredItemIdRef.current);
       } else if (e.code === 'Delete' || e.code === 'Backspace') {
-        const t = targetRef.current;
-        if (t?.itemId) onDeleteItem(t.itemId);
+        if (hoveredItemIdRef.current) onDeleteItem(hoveredItemIdRef.current);
       }
     };
     const wheel = (e: WheelEvent) => {
-      if (!activeRef.current) return;
-      const t = targetRef.current;
-      if (!t?.itemId) return;
+      if (!activeRef.current || !hoveredItemIdRef.current) return;
       e.preventDefault();
-      onResizeItem(t.itemId, e.deltaY < 0 ? RESIZE_STEP : -RESIZE_STEP);
+      onResizeItem(hoveredItemIdRef.current, e.deltaY < 0 ? RESIZE_STEP : -RESIZE_STEP);
     };
     const mousedown = (e: MouseEvent) => {
-      if (!activeRef.current || dragRef.current) return;
+      if (!activeRef.current) return;
+      if (e.button === 2) {
+        lookDragRef.current = true;
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      if (e.button !== 0 || dragRef.current) return;
       const t = targetRef.current;
-      if (e.button === 0 && paintRef.current && t?.wallRoomId && !t.itemId) {
+      if (hoveredCornerRef.current !== null && hoveredItemIdRef.current) {
+        const rect = getItemRectRef.current(hoveredItemIdRef.current);
+        if (!rect) return;
+        const corners = footprintCorners(rect);
+        const cornerIndex = hoveredCornerRef.current;
+        const opposite = 3 - cornerIndex;
+        dragRef.current = {
+          mode: 'corner',
+          id: hoveredItemIdRef.current,
+          cornerIndex,
+          fixedWorld: corners[opposite],
+          rotationRad: (rect.rotation * Math.PI) / 180,
+          planeY: rect.elevation,
+          origWidth: rect.width,
+          origHeight: rect.height,
+        };
+        return;
+      }
+      if (paintRef.current && t?.wallRoomId && !t.itemId) {
         onPaintWall(t.wallRoomId);
         return;
       }
-      if (!t?.itemId) return;
-      if (e.button === 0) {
+      if (t?.itemId) {
         const rect = getItemRectRef.current(t.itemId);
         if (!rect) return;
         dragRef.current = {
@@ -230,34 +282,11 @@ export function BuildControls({
           height: rect.height,
           rotation: rect.rotation,
         };
-      } else if (e.button === 2) {
-        const rect = getItemRectRef.current(t.itemId);
-        if (!rect) return;
-        const corners = footprintCorners(rect);
-        let best = 0;
-        let bestDist = Infinity;
-        corners.forEach(([cx, cz], i) => {
-          const dist = (cx - t.point[0]) ** 2 + (cz - t.point[2]) ** 2;
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = i;
-          }
-        });
-        const opposite = 3 - best;
-        dragRef.current = {
-          mode: 'corner',
-          id: t.itemId,
-          cornerIndex: best,
-          fixedWorld: corners[opposite],
-          rotationRad: (rect.rotation * Math.PI) / 180,
-          planeY: rect.elevation,
-          origWidth: rect.width,
-          origHeight: rect.height,
-        };
       }
     };
     const mouseup = (e: MouseEvent) => {
-      if ((e.button === 0 || e.button === 2) && dragRef.current) endDrag();
+      if (e.button === 2) lookDragRef.current = false;
+      if (e.button === 0 && dragRef.current) endDrag();
     };
     const contextmenu = (e: MouseEvent) => {
       if (activeRef.current) e.preventDefault();
@@ -274,17 +303,19 @@ export function BuildControls({
       window.removeEventListener('mouseup', mouseup);
       window.removeEventListener('contextmenu', contextmenu);
     };
-  }, [camera, onHotbarIndexChange, onPlace, onResizeItem, onRotateItem, onDeleteItem, onMoveItem, onCornerResize, onPaintWall]);
+  }, [onHotbarIndexChange, onPlace, onResizeItem, onRotateItem, onDeleteItem, onMoveItem, onCornerResize, onPaintWall]);
 
   const raycaster = useRef(new THREE.Raycaster());
   const plane = useRef(new THREE.Plane());
   const planeHit = useRef(new THREE.Vector3());
 
-  // The ghost preview meshes live in this same scene graph — without this
-  // exclusion the crosshair ray can hit its own preview box (positioned
-  // exactly along the ray from the previous frame) instead of the real
-  // floor/item behind it, feeding back into a runaway height each frame.
-  const raycastTargets = () => scene.children.filter((c) => c !== previewRef.current && c !== dragPreviewRef.current);
+  // The ghost preview and handle meshes live in this same scene graph —
+  // without this exclusion the cursor ray could hit its own preview box
+  // instead of the real floor/item behind it.
+  const raycastTargets = () => {
+    const excluded: (THREE.Object3D | null)[] = [previewRef.current, dragPreviewRef.current, ...handleMeshRefs.map((r) => r.current)];
+    return scene.children.filter((c) => !excluded.includes(c));
+  };
 
   useFrame(() => {
     if (!active) {
@@ -294,23 +325,23 @@ export function BuildControls({
       }
       if (previewRef.current) previewRef.current.visible = false;
       if (dragPreviewRef.current) dragPreviewRef.current.visible = false;
+      handleMeshRefs.forEach((r) => r.current && (r.current.visible = false));
       dragRef.current = null;
       dragResultRef.current = null;
+      lookDragRef.current = false;
+      hoveredItemIdRef.current = null;
+      hoveredCornerRef.current = null;
       return;
     }
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
 
     const drag = dragRef.current;
     const snap = (v: number) => (gridSnapRef.current > 0 ? Math.round(v / gridSnapRef.current) * gridSnapRef.current : v);
 
     if (drag) {
-      // While dragging, the placement ghost is hidden and this drag preview
-      // (cyan) takes over, showing the live footprint at its would-be
-      // landing spot. The actual store isn't touched until release.
       if (previewRef.current) previewRef.current.visible = false;
+      handleMeshRefs.forEach((r) => r.current && (r.current.visible = false));
+      raycaster.current.setFromCamera(ndc.current, camera);
       if (drag.mode === 'move') {
-        raycaster.current.set(camera.position, dir);
         raycaster.current.far = MAX_REACH;
         const hits = raycaster.current.intersectObjects(raycastTargets(), true);
         let hitPoint: THREE.Vector3 | null = null;
@@ -342,7 +373,6 @@ export function BuildControls({
         }
       } else {
         plane.current.set(new THREE.Vector3(0, 1, 0), -drag.planeY);
-        raycaster.current.set(camera.position, dir);
         const hit = raycaster.current.ray.intersectPlane(plane.current, planeHit.current);
         if (hit) {
           const fx = drag.fixedWorld[0];
@@ -383,48 +413,113 @@ export function BuildControls({
 
     if (dragPreviewRef.current) dragPreviewRef.current.visible = false;
 
-    raycaster.current.set(camera.position, dir);
-    raycaster.current.far = MAX_REACH;
-    const hits = raycaster.current.intersectObjects(raycastTargets(), true);
-    let next: CrosshairTarget | null = null;
-    for (const hit of hits) {
-      if (!hit.object.visible) continue;
-      const found = findItem(hit.object);
-      let canPlace = true;
-      if (hit.face) {
-        const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-        canPlace = worldNormal.y > 0.5;
+    // First check whether the cursor is near one of the current item's
+    // corner handles (checked in-plane at that item's own height, so the
+    // handle stays grabbable even when the cursor drifts slightly off the
+    // floor raycast). Only falls back to the normal object raycast when
+    // there's no handle nearby.
+    let overHandle = false;
+    if (hoveredItemIdRef.current && handleCornersRef.current) {
+      raycaster.current.setFromCamera(ndc.current, camera);
+      plane.current.set(new THREE.Vector3(0, 1, 0), -handleElevationRef.current);
+      const hit = raycaster.current.ray.intersectPlane(plane.current, planeHit.current);
+      if (hit) {
+        let best = -1;
+        let bestDist = HANDLE_GRAB_RADIUS;
+        handleCornersRef.current.forEach(([cx, cz], i) => {
+          const d = Math.hypot(hit.x - cx, hit.z - cz);
+          if (d < bestDist) {
+            bestDist = d;
+            best = i;
+          }
+        });
+        if (best >= 0) {
+          overHandle = true;
+          hoveredCornerRef.current = best;
+          targetRef.current = {
+            point: [hit.x, handleElevationRef.current, hit.z],
+            itemId: hoveredItemIdRef.current,
+            itemName: targetRef.current?.itemName ?? null,
+            canPlace: false,
+            wallRoomId: null,
+          };
+          onTargetChange(targetRef.current);
+        }
       }
-      next = {
-        point: [hit.point.x, hit.point.y, hit.point.z],
-        itemId: found?.id ?? null,
-        itemName: found?.name ?? null,
-        canPlace,
-        wallRoomId: found ? null : findWallRoom(hit.object),
-      };
-      break;
     }
-    const changed =
-      (next?.itemId ?? null) !== (targetRef.current?.itemId ?? null) ||
-      (next?.canPlace ?? null) !== (targetRef.current?.canPlace ?? null) ||
-      (next?.wallRoomId ?? null) !== (targetRef.current?.wallRoomId ?? null) ||
-      (next === null) !== (targetRef.current === null);
-    targetRef.current = next;
-    if (changed) onTargetChange(next);
 
-    // Move the ghost preview to follow the crosshair every frame, sized to
-    // the currently-selected hotbar item's real footprint and facing the
-    // way the player is currently facing (matching what G would place).
+    if (!overHandle) {
+      hoveredCornerRef.current = null;
+      raycaster.current.setFromCamera(ndc.current, camera);
+      raycaster.current.far = MAX_REACH;
+      const hits = raycaster.current.intersectObjects(raycastTargets(), true);
+      let next: CrosshairTarget | null = null;
+      for (const hit of hits) {
+        if (!hit.object.visible) continue;
+        const found = findItem(hit.object);
+        let canPlace = true;
+        if (hit.face) {
+          const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+          canPlace = worldNormal.y > 0.5;
+        }
+        next = {
+          point: [hit.point.x, hit.point.y, hit.point.z],
+          itemId: found?.id ?? null,
+          itemName: found?.name ?? null,
+          canPlace,
+          wallRoomId: found ? null : findWallRoom(hit.object),
+        };
+        break;
+      }
+      const changed =
+        (next?.itemId ?? null) !== (targetRef.current?.itemId ?? null) ||
+        (next?.canPlace ?? null) !== (targetRef.current?.canPlace ?? null) ||
+        (next?.wallRoomId ?? null) !== (targetRef.current?.wallRoomId ?? null) ||
+        (next === null) !== (targetRef.current === null);
+      targetRef.current = next;
+      if (changed) onTargetChange(next);
+      hoveredItemIdRef.current = next?.itemId ?? null;
+    }
+
+    // Refresh the hovered item's handle positions every frame (so they
+    // track it if something else moves it) and show/hide the 4 handle
+    // meshes to match.
+    if (hoveredItemIdRef.current) {
+      const rect = getItemRectRef.current(hoveredItemIdRef.current);
+      if (rect) {
+        const corners = footprintCorners(rect);
+        handleCornersRef.current = corners;
+        handleElevationRef.current = rect.elevation;
+        corners.forEach(([cx, cz], i) => {
+          const m = handleMeshRefs[i].current;
+          if (m) {
+            m.visible = true;
+            m.position.set(cx, rect.elevation + 0.05, cz);
+            const s = hoveredCornerRef.current === i ? 1.6 : 1;
+            m.scale.set(s, s, s);
+          }
+        });
+      } else {
+        handleCornersRef.current = null;
+        handleMeshRefs.forEach((r) => r.current && (r.current.visible = false));
+      }
+    } else {
+      handleCornersRef.current = null;
+      handleMeshRefs.forEach((r) => r.current && (r.current.visible = false));
+    }
+
+    // Move the ghost preview to follow the cursor every frame, sized to the
+    // currently-selected hotbar item's real footprint.
     const catalogId = hotbarRef.current[hotbarIndexRef.current];
     if (previewRef.current && previewMaterialRef.current) {
-      if (next && catalogId && !paintRef.current) {
+      const next = targetRef.current;
+      if (next && catalogId && !paintRef.current && !overHandle) {
         const entry = getCatalogEntry(catalogId);
         const w = entry?.width ?? 2;
         const d = entry?.height ?? 2;
         previewRef.current.visible = true;
         previewRef.current.position.set(next.point[0], next.point[1] + PREVIEW_HEIGHT / 2, next.point[2]);
         previewRef.current.scale.set(w, PREVIEW_HEIGHT, d);
-        previewRef.current.rotation.y = camera.rotation.y;
         previewMaterialRef.current.color.set(next.canPlace ? '#4ade80' : '#f87171');
       } else {
         previewRef.current.visible = false;
@@ -450,6 +545,12 @@ export function BuildControls({
           <lineBasicMaterial color="#ffffff" transparent opacity={0.95} depthTest={false} />
         </lineSegments>
       </mesh>
+      {handleMeshRefs.map((r, i) => (
+        <mesh key={i} ref={r} visible={false} renderOrder={999}>
+          <boxGeometry args={[HANDLE_SIZE, HANDLE_SIZE, HANDLE_SIZE]} />
+          <meshBasicMaterial color="#facc15" depthTest={false} />
+        </mesh>
+      ))}
     </>
   );
 }

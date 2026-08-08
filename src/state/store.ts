@@ -53,6 +53,19 @@ export interface RemoteCursor {
   bubble?: ChatBubble;
 }
 
+/** Another connected player's position/heading in the 3D walkthrough (feet,
+ * degrees) — separate from RemoteCursor, which tracks the 2D plan editor. */
+export interface RemoteAvatar {
+  x: number;
+  y: number;
+  z: number;
+  yawDeg: number;
+  sitting: boolean;
+  name: string;
+  color: string;
+  updatedAt: number;
+}
+
 export type CollabStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
 const CHAT_MESSAGE_LIMIT = 100;
@@ -70,6 +83,7 @@ interface PlannerState extends HistoryState {
   viewCenter: { x: number; y: number };
   collabStatus: CollabStatus;
   remoteCursors: Record<string, RemoteCursor>;
+  remoteAvatars: Record<string, RemoteAvatar>;
   chatMessages: ChatMessage[];
   chatOpen: boolean;
   localBubble: ChatBubble | null;
@@ -93,6 +107,10 @@ interface PlannerState extends HistoryState {
   removeRemoteCursor: (clientId: string) => void;
   clearRemoteCursors: () => void;
   pruneStaleCursors: (maxAgeMs: number) => void;
+  setRemoteAvatar: (clientId: string, avatar: Omit<RemoteAvatar, 'updatedAt'>) => void;
+  removeRemoteAvatar: (clientId: string) => void;
+  clearRemoteAvatars: () => void;
+  pruneStaleAvatars: (maxAgeMs: number) => void;
   pruneExpiredBubbles: () => void;
   applyRemoteProject: (project: Project) => void;
   addChatMessage: (message: ChatMessage) => void;
@@ -222,6 +240,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   viewCenter: { x: 400, y: 300 },
   collabStatus: 'idle',
   remoteCursors: {},
+  remoteAvatars: {},
   chatMessages: [],
   chatOpen: false,
   localBubble: null,
@@ -300,6 +319,26 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       }
       const localBubble = s.localBubble && s.localBubble.expiresAt <= now ? null : s.localBubble;
       return { remoteCursors: next, localBubble };
+    }),
+  setRemoteAvatar: (clientId, avatar) =>
+    set((s) => ({
+      remoteAvatars: { ...s.remoteAvatars, [clientId]: { ...avatar, updatedAt: Date.now() } },
+    })),
+  removeRemoteAvatar: (clientId) =>
+    set((s) => {
+      const next = { ...s.remoteAvatars };
+      delete next[clientId];
+      return { remoteAvatars: next };
+    }),
+  clearRemoteAvatars: () => set({ remoteAvatars: {} }),
+  pruneStaleAvatars: (maxAgeMs) =>
+    set((s) => {
+      const now = Date.now();
+      const next: Record<string, RemoteAvatar> = {};
+      for (const [id, avatar] of Object.entries(s.remoteAvatars)) {
+        if (now - avatar.updatedAt <= maxAgeMs) next[id] = avatar;
+      }
+      return { remoteAvatars: next };
     }),
   applyRemoteProject: (project) => {
     set({ project: normalizeProject(project) });

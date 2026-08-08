@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { resolveCollisions, type Obstacle } from './collision';
+import { broadcastAvatar } from '../../lib/collab';
 
 const EYE_HEIGHT = 5.5;
 const SIT_EYE_HEIGHT = 3.0;
@@ -34,6 +35,7 @@ export interface SeatTarget {
  * pauses) or stand back up. */
 export function WalkControls({
   spawn,
+  enabled = true,
   onLockChange,
   obstacles,
   doors,
@@ -44,6 +46,9 @@ export function WalkControls({
   onSitChange,
 }: {
   spawn: [number, number, number];
+  /** False while Build Mode owns the mouse (free cursor, no pointer lock) —
+   * movement/collision still run, only the look-around lock is suspended. */
+  enabled?: boolean;
   onLockChange: (locked: boolean) => void;
   obstacles: Obstacle[];
   doors: DoorTarget[];
@@ -163,9 +168,16 @@ export function WalkControls({
       nearSeatRef.current = closestSeat;
       onNearSeatChange(closestSeat);
     }
+
+    const yawDeg = (-camera.rotation.y * 180) / Math.PI;
+    broadcastAvatar(camera.position.x, camera.position.y, camera.position.z, yawDeg, !!sittingRef.current);
   });
 
-  return <PointerLockControls onLock={() => onLockChange(true)} onUnlock={() => onLockChange(false)} />;
+  useEffect(() => {
+    if (!enabled) document.exitPointerLock();
+  }, [enabled]);
+
+  return enabled ? <PointerLockControls onLock={() => onLockChange(true)} onUnlock={() => onLockChange(false)} /> : null;
 }
 
 export function WalkHint({ active, nearDoor, nearSeat, sitting }: { active: boolean; nearDoor: boolean; nearSeat: boolean; sitting: boolean }) {

@@ -18,6 +18,7 @@ import { PaintPanel, type Paint } from './PaintPanel';
 import { BuildControls, DEFAULT_HOTBAR, hotbarLabel, MIN_SIZE_FT, MAX_SIZE_FT, type CrosshairTarget } from './BuildControls';
 import { getCatalogEntry } from '../../data/catalog';
 import { getLightSource } from './lights';
+import { PlayerAvatar } from './PlayerAvatar';
 
 const WALL_H = 8;
 const DEFAULT_WALL_COLOR = '#d9d4c8';
@@ -163,6 +164,11 @@ export function Scene3D() {
   const updateEntity = usePlannerStore((s) => s.updateEntity);
   const addItemFromCatalog = usePlannerStore((s) => s.addItemFromCatalog);
   const deleteSelected = usePlannerStore((s) => s.deleteSelected);
+  const remoteAvatars = usePlannerStore((s) => s.remoteAvatars);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const relockPointer = () => {
+    wrapperRef.current?.querySelector('canvas')?.requestPointerLock();
+  };
   const [locked, setLocked] = useState(false);
   const [nearDoor, setNearDoor] = useState<string | null>(null);
   const [nearSeat, setNearSeat] = useState<string | null>(null);
@@ -189,7 +195,11 @@ export function Scene3D() {
 
   // Editing (selecting/dragging/placing) needs a free mouse cursor — while
   // walking with the pointer locked, only the walkthrough itself owns clicks.
-  const editingEnabled = !walkMode || !locked;
+  // While Build Mode is on, BuildControls owns the free cursor exclusively
+  // (it has its own move/resize/paint interactions), so the orbit-style
+  // click-to-select-and-gizmo system stays off to avoid the two fighting
+  // over the same click.
+  const editingEnabled = !walkMode || (!locked && !buildModeOn);
 
   const doorWindowItems = page.items.filter((i) => DOOR_KINDS.has(i.catalogId) || WINDOW_KINDS.has(i.catalogId));
   const doorItems = doorWindowItems.filter(isDoorItem);
@@ -295,6 +305,7 @@ export function Scene3D() {
     const point = lastPlacePointRef.current ?? [centerX, 0, centerZ];
     handleBuildPlace(catalogId, point, 0);
     setInventoryOpen(false);
+    relockPointer();
   };
 
   const getItemRect = (id: string) => {
@@ -329,7 +340,10 @@ export function Scene3D() {
 
   const handlePaintPick = (paint: Paint | null) => {
     setHeldPaint(paint);
-    if (!paint) setPaintOpen(false);
+    if (!paint) {
+      setPaintOpen(false);
+      relockPointer();
+    }
   };
 
   useEffect(() => {
@@ -339,7 +353,11 @@ export function Scene3D() {
         document.exitPointerLock();
         setInventoryOpen((open) => !open);
       } else if (e.code === 'KeyB' && !sitting && !inventoryOpen && !paintOpen) {
-        setBuildModeOn((on) => !on);
+        setBuildModeOn((on) => {
+          if (!on) document.exitPointerLock();
+          else relockPointer();
+          return !on;
+        });
       } else if (e.code === 'KeyP' && !sitting && buildModeOn) {
         document.exitPointerLock();
         setPaintOpen((open) => !open);
@@ -350,7 +368,7 @@ export function Scene3D() {
   }, [walkMode, sitting, inventoryOpen, buildModeOn, paintOpen]);
 
   return (
-    <div className="relative h-full w-full bg-slate-200">
+    <div ref={wrapperRef} className="relative h-full w-full bg-slate-200">
       <Canvas
         key={walkMode ? 'walk' : 'orbit'}
         shadows
@@ -463,7 +481,7 @@ export function Scene3D() {
         })}
         {walkMode && (
           <BuildControls
-            active={locked && buildModeOn && !sitting && !inventoryOpen && !paintOpen}
+            active={buildModeOn && !sitting && !inventoryOpen && !paintOpen}
             hotbar={hotbar}
             hotbarIndex={hotbarIndex}
             gridSnapFt={project.gridSnap}
@@ -483,6 +501,7 @@ export function Scene3D() {
         {walkMode ? (
           <WalkControls
             spawn={[centerX, 0, centerZ]}
+            enabled={!buildModeOn}
             onLockChange={setLocked}
             obstacles={obstacles}
             doors={doorTargets}
@@ -501,30 +520,32 @@ export function Scene3D() {
             maxDistance={spanFt * 4}
           />
         )}
+        {Object.entries(remoteAvatars).map(([id, a]) => (
+          <PlayerAvatar key={id} clientId={id} color={a.color} name={a.name} />
+        ))}
       </Canvas>
-      {walkMode && !inventoryOpen && <WalkHint active={locked} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
+      {walkMode && !inventoryOpen && <WalkHint active={locked || buildModeOn} nearDoor={!!nearDoor} nearSeat={!!nearSeat} sitting={!!sitting} />}
       {walkMode && locked && !sitting && !inventoryOpen && !buildModeOn && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
           <span className="rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/70">Press B to build</span>
         </div>
       )}
-      {walkMode && locked && buildModeOn && !sitting && !inventoryOpen && !paintOpen && (
+      {walkMode && buildModeOn && !sitting && !inventoryOpen && !paintOpen && (
         <div className="pointer-events-none absolute inset-0">
-          <div className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30" />
           <div className="absolute inset-x-0 top-20 flex justify-center">
             <div className="rounded-md bg-black/60 px-3 py-1.5 text-center text-sm text-white">
               {heldPaint ? (
                 <span className="text-xs text-white/70">
                   <span className="mr-1.5 inline-block h-3 w-3 rounded-full align-middle" style={{ backgroundColor: heldPaint.color ?? '#d9d4c8' }} />
-                  {crosshairTarget?.wallRoomId ? 'Left-click this wall to paint it' : 'Aim at a wall to paint · P for palette'}
+                  {crosshairTarget?.wallRoomId ? 'Click this wall to paint it' : 'Point at a wall to paint · P for palette'}
                 </span>
               ) : crosshairTarget?.itemId ? (
                 <>
                   <span className="font-medium">{crosshairTarget.itemName}</span>
                   <br />
                   <span className="text-xs text-white/70">
-                    Click-drag to move &middot; right-click a corner to resize &middot; scroll to resize both &middot; R to
-                    rotate &middot; Del to remove
+                    Drag to move &middot; drag a yellow handle to resize a corner &middot; scroll to resize both &middot; R
+                    to rotate &middot; Del to remove
                     {crosshairTarget.canPlace && hotbar[hotbarIndex] ? ` · G to place ${hotbarLabel(hotbar[hotbarIndex])} here` : ''}
                   </span>
                 </>
@@ -535,7 +556,7 @@ export function Scene3D() {
               ) : crosshairTarget?.wallRoomId ? (
                 <span className="text-xs text-white/70">Press P to pick a paint, then click this wall</span>
               ) : (
-                <span className="text-xs text-white/70">Look at a floor or surface to build</span>
+                <span className="text-xs text-white/70">Point at a floor or surface to build &middot; right-click drag to look around</span>
               )}
             </div>
           </div>
@@ -566,13 +587,23 @@ export function Scene3D() {
             hotbar={hotbar}
             onPick={handleInventoryPick}
             onAssignSlot={(slot, catalogId) => setHotbar((h) => h.map((c, i) => (i === slot ? catalogId : c)))}
-            onClose={() => setInventoryOpen(false)}
+            onClose={() => {
+              setInventoryOpen(false);
+              relockPointer();
+            }}
           />
         </div>
       )}
       {walkMode && paintOpen && (
         <div className="pointer-events-none absolute inset-0">
-          <PaintPanel current={heldPaint} onPick={handlePaintPick} onClose={() => setPaintOpen(false)} />
+          <PaintPanel
+            current={heldPaint}
+            onPick={handlePaintPick}
+            onClose={() => {
+              setPaintOpen(false);
+              relockPointer();
+            }}
+          />
         </div>
       )}
       {editingEnabled && !inventoryOpen && (
